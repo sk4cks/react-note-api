@@ -1,1 +1,1 @@
-# 스프링 시큐리티 Oauth2 실습 - Resource Server
+# 리액트로 이것저것... api 서버
