@@ -1,0 +1,41 @@
+package note_api.auth;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
+
+@Service
+public class AuthService {
+
+    private final AuthServerClient authServerClient;
+
+    public AuthService(AuthServerClient authServerClient) {
+        this.authServerClient = authServerClient;
+    }
+
+    public TokenResponse login(LoginRequest request) {
+        try {
+            ResponseEntity<TokenResponse> response = authServerClient.login(request);
+            TokenResponse body = response.getBody();
+            if (body == null) {
+                throw new IllegalStateException("Login failed: empty response from auth server");
+            }
+            return body;
+        } catch (HttpStatusCodeException ex) {
+            throw new IllegalStateException("Login failed: " + ex.getResponseBodyAsString(), ex);
+        }
+    }
+
+    public TokenResponse exchangeToken(TokenExchangeRequest request) {
+        try {
+            ResponseEntity<TokenResponse> response = authServerClient.exchangeAuthorizationCode(request);
+            TokenResponse body = response.getBody();
+            if (body == null) {
+                throw new IllegalStateException("Token exchange failed: empty response from auth server");
+            }
+            return body;
+        } catch (HttpStatusCodeException ex) {
+            throw new IllegalStateException("Token exchange failed: " + ex.getResponseBodyAsString(), ex);
+        }
+    }
+}

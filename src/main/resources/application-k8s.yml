@@ -1,0 +1,14 @@
+# k8s/EC2 배포 시 (SPRING_PROFILES_ACTIVE=k8s)
+spring:
+  config:
+    activate:
+      on-profile: k8s
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWK_SET_URI:http://auth-server.note.svc.cluster.local:9000/authorization-api/oauth2/jwks}
+
+auth-server:
+  base-url: ${AUTH_SERVER_BASE_URL:http://auth-server.note.svc.cluster.local:9000/authorization-api}
+  token-uri: ${AUTH_SERVER_TOKEN_URI:http://auth-server.note.svc.cluster.local:9000/authorization-api/oauth2/token}

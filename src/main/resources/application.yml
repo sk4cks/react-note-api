@@ -1,9 +1,19 @@
 server:
   port: 8082
 
+auth-server:
+  base-url: http://localhost:9000/authorization-api
+  token-uri: http://localhost:9000/authorization-api/oauth2/token
+
+oauth2:
+  client:
+    client-id: react-note
+    client-secret: react-note-secret
+
 spring:
   security:
     oauth2:
-#      resourceserver:
-#        jwt:
-#          jwk-set-uri: http://localhost:9000/oauth2/jwks
+      resourceserver:
+        jwt:
+          # context-path 있으면 issuer-uri discovery(루트) 404 → jwk-set-uri 직접 지정
+          jwk-set-uri: http://localhost:9000/authorization-api/oauth2/jwks
