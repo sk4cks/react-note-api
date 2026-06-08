@@ -3,7 +3,7 @@ server:
 
 auth-server:
   base-url: http://localhost:9000/authorization-api
-  token-uri: http://localhost:9000/authorization-api/oauth2/token
+  public-url: ${auth-server.base-url}
 
 oauth2:
   client:
@@ -15,5 +15,4 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          # context-path 있으면 issuer-uri discovery(루트) 404 → jwk-set-uri 직접 지정
-          jwk-set-uri: http://localhost:9000/authorization-api/oauth2/jwks
+          jwk-set-uri: ${auth-server.base-url}/oauth2/jwks

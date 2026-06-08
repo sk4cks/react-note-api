@@ -9,11 +9,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.nio.charset.StandardCharsets;
 
 @Component
 public class AuthServerClient {
 
     private final RestTemplate restTemplate;
+    private final String authServerPublicUrl;
     private final String loginUrl;
     private final String tokenUri;
     private final String clientId;
@@ -22,14 +26,27 @@ public class AuthServerClient {
     public AuthServerClient(
             RestTemplate restTemplate,
             @Value("${auth-server.base-url}") String authServerBaseUrl,
-            @Value("${auth-server.token-uri}") String tokenUri,
+            @Value("${auth-server.public-url}") String authServerPublicUrl,
             @Value("${oauth2.client.client-id}") String clientId,
             @Value("${oauth2.client.client-secret}") String clientSecret) {
         this.restTemplate = restTemplate;
+        this.authServerPublicUrl = authServerPublicUrl;
         this.loginUrl = authServerBaseUrl + "/auth/login";
-        this.tokenUri = tokenUri;
+        this.tokenUri = authServerBaseUrl + "/oauth2/token";
         this.clientId = clientId;
         this.clientSecret = clientSecret;
+    }
+
+    /** SNS prepare — 브라우저 redirect (public-url) */
+    public String buildSocialPrepareRedirectUrl(
+            String provider, String state, String codeChallenge, String redirectUri) {
+        return UriComponentsBuilder.fromUriString(authServerPublicUrl + "/auth/social/prepare/" + provider)
+                .queryParam("state", state)
+                .queryParam("code_challenge", codeChallenge)
+                .queryParam("redirect_uri", redirectUri)
+                .build()
+                .encode(StandardCharsets.UTF_8)
+                .toUriString();
     }
 
     public ResponseEntity<TokenResponse> login(LoginRequest request) {

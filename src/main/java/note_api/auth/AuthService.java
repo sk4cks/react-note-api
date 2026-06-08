@@ -1,8 +1,11 @@
 package note_api.auth;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
+
+import java.io.IOException;
 
 @Service
 public class AuthService {
@@ -24,6 +27,17 @@ public class AuthService {
         } catch (HttpStatusCodeException ex) {
             throw new IllegalStateException("Login failed: " + ex.getResponseBodyAsString(), ex);
         }
+    }
+
+    public void redirectToSocialPrepare(
+            String provider,
+            String state,
+            String codeChallenge,
+            String redirectUri,
+            HttpServletResponse response) throws IOException {
+        String target = authServerClient.buildSocialPrepareRedirectUrl(
+                provider, state, codeChallenge, redirectUri);
+        response.sendRedirect(target);
     }
 
     public TokenResponse exchangeToken(TokenExchangeRequest request) {

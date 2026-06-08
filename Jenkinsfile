@@ -1,5 +1,8 @@
 pipeline {
   agent any
+  options {
+    buildDiscarder(logRotator(numToKeepStr: '1', artifactNumToKeepStr: '1'))
+  }
   environment {
     AWS_REGION = 'ap-southeast-2'
     ECR_URI = '019511184889.dkr.ecr.ap-southeast-2.amazonaws.com/react-note-api'
