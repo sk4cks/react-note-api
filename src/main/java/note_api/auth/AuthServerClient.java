@@ -71,4 +71,18 @@ public class AuthServerClient {
 
         return restTemplate.postForEntity(tokenUri, entity, TokenResponse.class);
     }
+
+    public ResponseEntity<TokenResponse> refreshToken(String refreshToken) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "refresh_token");
+        form.add("refresh_token", refreshToken);
+        form.add("client_id", clientId);
+        form.add("client_secret", clientSecret);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(form, headers);
+
+        return restTemplate.postForEntity(tokenUri, entity, TokenResponse.class);
+    }
 }

@@ -52,4 +52,17 @@ public class AuthService {
             throw new IllegalStateException("Token exchange failed: " + ex.getResponseBodyAsString(), ex);
         }
     }
+
+    public TokenResponse refreshToken(String refreshToken) {
+        try {
+            ResponseEntity<TokenResponse> response = authServerClient.refreshToken(refreshToken);
+            TokenResponse body = response.getBody();
+            if (body == null) {
+                throw new IllegalStateException("Token refresh failed: empty response from auth server");
+            }
+            return body;
+        } catch (HttpStatusCodeException ex) {
+            throw new IllegalStateException("Token refresh failed: " + ex.getResponseBodyAsString(), ex);
+        }
+    }
 }

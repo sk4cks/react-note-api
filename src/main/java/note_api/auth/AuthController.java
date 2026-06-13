@@ -1,7 +1,9 @@
 package note_api.auth;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,17 +19,21 @@ import java.io.IOException;
 public class AuthController {
 
     private final AuthService authService;
+    private final RefreshTokenCookieService refreshTokenCookieService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, RefreshTokenCookieService refreshTokenCookieService) {
         this.authService = authService;
+        this.refreshTokenCookieService = refreshTokenCookieService;
     }
 
     @PostMapping("/login")
-    public ResponseEntity<TokenResponse> login(@RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+    public ResponseEntity<TokenResponse> login(
+            @RequestBody LoginRequest request, HttpServletResponse response) {
+        TokenResponse tokens = authService.login(request);
+        refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
+        return ResponseEntity.ok(withoutRefreshToken(tokens));
     }
 
-    /** SNS 시작 — 프론트는 API만 호출, BFF가 Auth Server prepare로 redirect */
     @GetMapping("/social/prepare/{provider}")
     public void socialPrepare(
             @PathVariable String provider,
@@ -38,9 +44,40 @@ public class AuthController {
         authService.redirectToSocialPrepare(provider, state, codeChallenge, redirectUri, response);
     }
 
-    /** SNS 등 authorization_code + PKCE 완료 후 토큰 교환 */
     @PostMapping("/token")
-    public ResponseEntity<TokenResponse> token(@RequestBody TokenExchangeRequest request) {
-        return ResponseEntity.ok(authService.exchangeToken(request));
+    public ResponseEntity<TokenResponse> token(
+            @RequestBody TokenExchangeRequest request, HttpServletResponse response) {
+        TokenResponse tokens = authService.exchangeToken(request);
+        refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
+        return ResponseEntity.ok(withoutRefreshToken(tokens));
+    }
+
+    /** refresh_token은 HttpOnly cookie — body 없음 */
+    @PostMapping("/refresh")
+    public ResponseEntity<TokenResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
+        String refreshToken = refreshTokenCookieService.readRefreshToken(request);
+        if (!StringUtils.hasText(refreshToken)) {
+            return ResponseEntity.status(401).build();
+        }
+        TokenResponse tokens = authService.refreshToken(refreshToken);
+        if (StringUtils.hasText(tokens.refreshToken())) {
+            refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
+        }
+        return ResponseEntity.ok(withoutRefreshToken(tokens));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletResponse response) {
+        refreshTokenCookieService.clearRefreshToken(response);
+        return ResponseEntity.noContent().build();
+    }
+
+    private static TokenResponse withoutRefreshToken(TokenResponse tokens) {
+        return new TokenResponse(
+                tokens.accessToken(),
+                tokens.tokenType(),
+                tokens.expiresIn(),
+                null,
+                tokens.scope());
     }
 }

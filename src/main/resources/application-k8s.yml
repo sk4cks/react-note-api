@@ -12,3 +12,12 @@ spring:
 auth-server:
   base-url: ${AUTH_SERVER_BASE_URL:http://auth-server.note.svc.cluster.local:9000/authorization-api}
   public-url: ${AUTH_SERVER_PUBLIC_URL:https://auth.13.239.220.205.nip.io/authorization-api}
+
+app:
+  cors:
+    allowed-origins:
+      - https://app.13.239.220.205.nip.io
+  auth:
+    refresh-cookie:
+      secure: true
+      same-site: Lax
