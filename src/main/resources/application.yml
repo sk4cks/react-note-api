@@ -4,6 +4,7 @@ server:
 auth-server:
   base-url: http://localhost:9000/authorization-api
   public-url: ${auth-server.base-url}
+  internal-api-key: ${AUTH_INTERNAL_API_KEY:dev-internal-key}
 
 oauth2:
   client:

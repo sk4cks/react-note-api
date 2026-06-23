@@ -12,6 +12,7 @@ spring:
 auth-server:
   base-url: ${AUTH_SERVER_BASE_URL:http://auth-server.note.svc.cluster.local:9000/authorization-api}
   public-url: ${AUTH_SERVER_PUBLIC_URL:https://auth.13.239.220.205.nip.io/authorization-api}
+  internal-api-key: ${AUTH_INTERNAL_API_KEY:dev-internal-key}
 
 app:
   cors:
