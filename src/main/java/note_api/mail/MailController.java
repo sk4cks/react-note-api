@@ -34,6 +34,11 @@ public class MailController {
         return mailService.getMessage(jwt.getSubject(), id);
     }
 
+    @GetMapping("/folders")
+    public List<MailFolderDto> getFolders(@AuthenticationPrincipal Jwt jwt) {
+        return mailService.getFolderStats(jwt.getSubject());
+    }
+
     @PostMapping("/send")
     public void sendMail(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody SendMailRequest request) {
         mailService.sendMessage(jwt.getSubject(), request);

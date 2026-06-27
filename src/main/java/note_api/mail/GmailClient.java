@@ -69,6 +69,13 @@ public class GmailClient {
         return toDetail(body);
     }
 
+    public void markAsRead(String accessToken, String messageId) {
+        String url = GmailApiConstants.USERS_ME_BASE + "/messages/" + messageId + "/modify";
+        JsonNode payload = objectMapper.createObjectNode()
+                .set("removeLabelIds", objectMapper.createArrayNode().add(GmailApiConstants.LABEL_UNREAD));
+        exchange(accessToken, url, HttpMethod.POST, payload);
+    }
+
     public void sendMessage(String accessToken, String to, String subject, String textBody) {
         String raw = buildRawMime(to, subject, textBody);
         String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
@@ -76,6 +83,81 @@ public class GmailClient {
         String url = GmailApiConstants.USERS_ME_BASE + "/messages/send";
         JsonNode payload = objectMapper.createObjectNode().put("raw", encoded);
         exchange(accessToken, url, HttpMethod.POST, payload);
+    }
+
+    public List<MailFolderDto> getFolderStats(String accessToken) {
+        List<String> labelIds = List.of(
+                GmailApiConstants.LABEL_CATEGORY_PERSONAL,
+                GmailApiConstants.LABEL_INBOX,
+                GmailApiConstants.LABEL_SENT,
+                GmailApiConstants.LABEL_DRAFT);
+        Map<String, JsonNode> labelsById = fetchLabelsBatch(accessToken, labelIds);
+
+        JsonNode inboxLabel = labelsById.get(GmailApiConstants.LABEL_CATEGORY_PERSONAL);
+        if (inboxLabel == null) {
+            inboxLabel = labelsById.get(GmailApiConstants.LABEL_INBOX);
+        }
+
+        return List.of(
+                toFolderDto(
+                        GmailApiConstants.FOLDER_INBOX,
+                        "받은편지함",
+                        inboxLabel,
+                        GmailApiConstants.LABEL_FIELD_THREADS_UNREAD),
+                toFolderDto(
+                        GmailApiConstants.FOLDER_SENT,
+                        "보낸편지함",
+                        labelsById.get(GmailApiConstants.LABEL_SENT),
+                        GmailApiConstants.LABEL_FIELD_THREADS_TOTAL),
+                toFolderDto(
+                        GmailApiConstants.FOLDER_DRAFT,
+                        "임시보관함",
+                        labelsById.get(GmailApiConstants.LABEL_DRAFT),
+                        GmailApiConstants.LABEL_FIELD_THREADS_TOTAL));
+    }
+
+    private Map<String, JsonNode> fetchLabelsBatch(String accessToken, List<String> labelIds) {
+        String boundary = "batch_gmail_" + UUID.randomUUID();
+        StringBuilder sb = new StringBuilder();
+        for (String labelId : labelIds) {
+            sb.append("--").append(boundary).append("\r\n");
+            sb.append("Content-Type: application/http\r\n");
+            sb.append("\r\n");
+            sb.append("GET /gmail/v1/users/me/labels/")
+                    .append(labelId)
+                    .append("\r\n\r\n");
+        }
+        sb.append("--").append(boundary).append("--\r\n");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        headers.setContentType(MediaType.parseMediaType("multipart/mixed; boundary=" + boundary));
+        HttpEntity<String> entity = new HttpEntity<>(sb.toString(), headers);
+
+        ResponseEntity<byte[]> response = restTemplate.exchange(
+                GmailApiConstants.BATCH_URL, HttpMethod.POST, entity, byte[].class);
+
+        String responseBody = response.getBody() == null
+                ? ""
+                : new String(response.getBody(), StandardCharsets.UTF_8);
+        MediaType contentType = response.getHeaders().getContentType();
+        String responseBoundary = extractBatchBoundary(contentType != null ? contentType.toString() : "");
+        List<JsonNode> bodies = parseBatchResponse(responseBody, responseBoundary);
+
+        Map<String, JsonNode> labelsById = new HashMap<>();
+        for (JsonNode body : bodies) {
+            String id = body.path("id").asText(null);
+            if (StringUtils.hasText(id)) {
+                labelsById.put(id, body);
+            }
+        }
+        return labelsById;
+    }
+
+    private static MailFolderDto toFolderDto(
+            String folderId, String label, JsonNode body, String countField) {
+        int count = body != null ? body.path(countField).asInt(0) : 0;
+        return new MailFolderDto(folderId, label, count);
     }
 
     private List<MailMessageSummaryDto> fetchSummariesBatch(String accessToken, List<String> ids, String folder) {
@@ -282,8 +364,12 @@ public class GmailClient {
         }
 
         ResponseEntity<String> response = restTemplate.exchange(url, method, entity, String.class);
+        String responseBody = response.getBody();
+        if (!StringUtils.hasText(responseBody)) {
+            return objectMapper.nullNode();
+        }
         try {
-            return objectMapper.readTree(response.getBody());
+            return objectMapper.readTree(responseBody);
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to parse Gmail response", ex);
         }
@@ -298,11 +384,14 @@ public class GmailClient {
     }
 
     private static String resolveFolder(JsonNode body) {
-        if (hasLabel(body, GmailApiConstants.LABEL_SENT)) {
-            return GmailApiConstants.FOLDER_SENT;
-        }
         if (hasLabel(body, GmailApiConstants.LABEL_DRAFT)) {
             return GmailApiConstants.FOLDER_DRAFT;
+        }
+        if (hasLabel(body, GmailApiConstants.LABEL_INBOX)) {
+            return GmailApiConstants.FOLDER_INBOX;
+        }
+        if (hasLabel(body, GmailApiConstants.LABEL_SENT)) {
+            return GmailApiConstants.FOLDER_SENT;
         }
         return GmailApiConstants.FOLDER_INBOX;
     }
@@ -343,13 +432,13 @@ public class GmailClient {
     }
 
     private static BodyContent extractBody(JsonNode payload) {
-        String plain = findBodyByMimeType(payload, GmailApiConstants.MIME_TEXT_PLAIN);
-        if (StringUtils.hasText(plain)) {
-            return new BodyContent(plain, GmailApiConstants.MIME_TEXT_PLAIN);
-        }
         String html = findBodyByMimeType(payload, GmailApiConstants.MIME_TEXT_HTML);
         if (StringUtils.hasText(html)) {
             return new BodyContent(html, GmailApiConstants.MIME_TEXT_HTML);
+        }
+        String plain = findBodyByMimeType(payload, GmailApiConstants.MIME_TEXT_PLAIN);
+        if (StringUtils.hasText(plain)) {
+            return new BodyContent(plain, GmailApiConstants.MIME_TEXT_PLAIN);
         }
         return new BodyContent("", GmailApiConstants.MIME_TEXT_PLAIN);
     }
@@ -406,11 +495,25 @@ public class GmailClient {
     }
 
     private static String buildRawMime(String to, String subject, String body) {
-        return "To: " + to + "\r\n"
-                + "Subject: " + subject + "\r\n"
+        return "MIME-Version: 1.0\r\n"
+                + "To: " + to + "\r\n"
+                + "Subject: " + encodeMimeHeader(subject) + "\r\n"
                 + "Content-Type: " + GmailApiConstants.MIME_TEXT_PLAIN + "; charset=UTF-8\r\n"
+                + "Content-Transfer-Encoding: base64\r\n"
                 + "\r\n"
-                + body;
+                + Base64.getEncoder().encodeToString(body.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String encodeMimeHeader(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        if (value.chars().allMatch(ch -> ch < 128)) {
+            return value;
+        }
+        return "=?UTF-8?B?"
+                + Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8))
+                + "?=";
     }
 
     private record HeaderValues(String from, String to, String subject, String date) {}

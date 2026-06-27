@@ -21,7 +21,11 @@ final class GmailApiConstants {
     static final String LABEL_INBOX = "INBOX";
     static final String LABEL_SENT = "SENT";
     static final String LABEL_DRAFT = "DRAFT";
+    static final String LABEL_CATEGORY_PERSONAL = "CATEGORY_PERSONAL";
     static final String LABEL_UNREAD = "UNREAD";
+
+    static final String LABEL_FIELD_THREADS_UNREAD = "threadsUnread";
+    static final String LABEL_FIELD_THREADS_TOTAL = "threadsTotal";
 
     static final String HEADER_FROM = "from";
     static final String HEADER_TO = "to";
