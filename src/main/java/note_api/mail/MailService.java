@@ -15,9 +15,10 @@ public class MailService {
     private final AuthServerClient authServerClient;
     private final GmailClient gmailClient;
 
-    public List<MailMessageSummaryDto> listMessages(String principal, String folder) {
+    public MailMessageListDto listMessages(String principal, String folder, String pageToken) {
         String googleToken = authServerClient.fetchGoogleAccessToken(principal);
-        return gmailClient.listMessages(googleToken, folder, GmailApiConstants.DEFAULT_LIST_MAX_RESULTS);
+        return gmailClient.listMessages(
+                googleToken, folder, GmailApiConstants.DEFAULT_LIST_MAX_RESULTS, pageToken);
     }
 
     public MailMessageDetailDto getMessage(String principal, String messageId) {
@@ -27,14 +28,15 @@ public class MailService {
             return detail;
         }
         try {
-            gmailClient.markAsRead(googleToken, messageId);
+            gmailClient.markThreadAsRead(googleToken, detail.threadId());
         } catch (RuntimeException ex) {
-            log.warn("Failed to mark message as read: {}", messageId, ex);
+            log.warn("Failed to mark thread as read: {}", detail.threadId(), ex);
             return detail;
         }
-        
+
         return new MailMessageDetailDto(
                 detail.id(),
+                detail.threadId(),
                 detail.folder(),
                 detail.from(),
                 detail.fromEmail(),

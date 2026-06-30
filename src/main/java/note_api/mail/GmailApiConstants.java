@@ -12,11 +12,16 @@ final class GmailApiConstants {
     static final String METADATA_QUERY =
             "format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date";
 
-    static final int DEFAULT_LIST_MAX_RESULTS = 15;
+    static final int DEFAULT_LIST_MAX_RESULTS = 20;
 
     static final String FOLDER_INBOX = "inbox";
     static final String FOLDER_SENT = "sent";
     static final String FOLDER_DRAFT = "draft";
+
+    static final String QUERY_INBOX_PRIMARY = "in:inbox category:primary";
+    static final String QUERY_INBOX_PRIMARY_UNREAD = "in:inbox category:primary is:unread";
+
+    static final int THREAD_COUNT_PAGE_SIZE = 500;
 
     static final String LABEL_INBOX = "INBOX";
     static final String LABEL_SENT = "SENT";
@@ -24,7 +29,6 @@ final class GmailApiConstants {
     static final String LABEL_CATEGORY_PERSONAL = "CATEGORY_PERSONAL";
     static final String LABEL_UNREAD = "UNREAD";
 
-    static final String LABEL_FIELD_THREADS_UNREAD = "threadsUnread";
     static final String LABEL_FIELD_THREADS_TOTAL = "threadsTotal";
 
     static final String HEADER_FROM = "from";

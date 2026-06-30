@@ -31,32 +31,66 @@ public class GmailClient {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    public List<MailMessageSummaryDto> listMessages(String accessToken, String folder, int maxResults) {
-        String labelId = toLabelId(folder);
-        String listUrl = UriComponentsBuilder.fromUriString(GmailApiConstants.USERS_ME_BASE + "/messages")
-                .queryParam("labelIds", labelId)
-                .queryParam("maxResults", maxResults)
-                .build()
-                .toUriString();
+    public MailMessageListDto listMessages(
+            String accessToken, String folder, int maxResults, String pageToken) {
+        if (GmailApiConstants.FOLDER_INBOX.equals(folder)) {
+            return listThreads(
+                    accessToken,
+                    folder,
+                    maxResults,
+                    pageToken,
+                    GmailApiConstants.QUERY_INBOX_PRIMARY,
+                    null);
+        }
+        return listThreads(
+                accessToken, folder, maxResults, pageToken, null, toListLabelId(folder));
+    }
+
+    private MailMessageListDto listThreads(
+            String accessToken,
+            String folder,
+            int maxResults,
+            String pageToken,
+            String query,
+            String labelId) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
+                        GmailApiConstants.USERS_ME_BASE + "/threads")
+                .queryParam("maxResults", maxResults);
+        if (StringUtils.hasText(query)) {
+            builder.queryParam("q", query);
+        }
+        if (StringUtils.hasText(labelId)) {
+            builder.queryParam("labelIds", labelId);
+        }
+        if (StringUtils.hasText(pageToken)) {
+            builder.queryParam("pageToken", pageToken);
+        }
+        String listUrl = builder.build().toUriString();
 
         JsonNode listBody = exchange(accessToken, listUrl, HttpMethod.GET, null);
-        JsonNode messages = listBody.path("messages");
-        if (!messages.isArray() || messages.isEmpty()) {
-            return List.of();
+        JsonNode threads = listBody.path("threads");
+        String nextPageToken = listBody.path("nextPageToken").asText(null);
+        if (!StringUtils.hasText(nextPageToken)) {
+            nextPageToken = null;
         }
 
-        List<String> ids = new ArrayList<>();
-        for (JsonNode messageRef : messages) {
-            String id = messageRef.path("id").asText(null);
+        if (!threads.isArray() || threads.isEmpty()) {
+            return new MailMessageListDto(List.of(), nextPageToken);
+        }
+
+        List<String> threadIds = new ArrayList<>();
+        for (JsonNode threadRef : threads) {
+            String id = threadRef.path("id").asText(null);
             if (StringUtils.hasText(id)) {
-                ids.add(id);
+                threadIds.add(id);
             }
         }
-        if (ids.isEmpty()) {
-            return List.of();
+        if (threadIds.isEmpty()) {
+            return new MailMessageListDto(List.of(), nextPageToken);
         }
 
-        return fetchSummariesBatch(accessToken, ids, folder);
+        List<MailMessageSummaryDto> messages = fetchThreadSummariesBatch(accessToken, threadIds, folder);
+        return new MailMessageListDto(messages, nextPageToken);
     }
 
     public MailMessageDetailDto getMessage(String accessToken, String messageId) {
@@ -69,8 +103,8 @@ public class GmailClient {
         return toDetail(body);
     }
 
-    public void markAsRead(String accessToken, String messageId) {
-        String url = GmailApiConstants.USERS_ME_BASE + "/messages/" + messageId + "/modify";
+    public void markThreadAsRead(String accessToken, String threadId) {
+        String url = GmailApiConstants.USERS_ME_BASE + "/threads/" + threadId + "/modify";
         JsonNode payload = objectMapper.createObjectNode()
                 .set("removeLabelIds", objectMapper.createArrayNode().add(GmailApiConstants.LABEL_UNREAD));
         exchange(accessToken, url, HttpMethod.POST, payload);
@@ -86,34 +120,48 @@ public class GmailClient {
     }
 
     public List<MailFolderDto> getFolderStats(String accessToken) {
-        List<String> labelIds = List.of(
-                GmailApiConstants.LABEL_CATEGORY_PERSONAL,
-                GmailApiConstants.LABEL_INBOX,
-                GmailApiConstants.LABEL_SENT,
-                GmailApiConstants.LABEL_DRAFT);
+        List<String> labelIds = List.of(GmailApiConstants.LABEL_DRAFT);
         Map<String, JsonNode> labelsById = fetchLabelsBatch(accessToken, labelIds);
 
-        JsonNode inboxLabel = labelsById.get(GmailApiConstants.LABEL_CATEGORY_PERSONAL);
-        if (inboxLabel == null) {
-            inboxLabel = labelsById.get(GmailApiConstants.LABEL_INBOX);
-        }
+        int inboxUnread =
+                countThreadsByQuery(accessToken, GmailApiConstants.QUERY_INBOX_PRIMARY_UNREAD);
 
         return List.of(
-                toFolderDto(
-                        GmailApiConstants.FOLDER_INBOX,
-                        "받은편지함",
-                        inboxLabel,
-                        GmailApiConstants.LABEL_FIELD_THREADS_UNREAD),
+                new MailFolderDto(GmailApiConstants.FOLDER_INBOX, "받은편지함", inboxUnread),
                 toFolderDto(
                         GmailApiConstants.FOLDER_SENT,
                         "보낸편지함",
-                        labelsById.get(GmailApiConstants.LABEL_SENT),
+                        null,
                         GmailApiConstants.LABEL_FIELD_THREADS_TOTAL),
                 toFolderDto(
                         GmailApiConstants.FOLDER_DRAFT,
                         "임시보관함",
                         labelsById.get(GmailApiConstants.LABEL_DRAFT),
                         GmailApiConstants.LABEL_FIELD_THREADS_TOTAL));
+    }
+
+    private int countThreadsByQuery(String accessToken, String query) {
+        int count = 0;
+        String pageToken = null;
+        do {
+            UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
+                            GmailApiConstants.USERS_ME_BASE + "/threads")
+                    .queryParam("q", query)
+                    .queryParam("maxResults", GmailApiConstants.THREAD_COUNT_PAGE_SIZE);
+            if (StringUtils.hasText(pageToken)) {
+                builder.queryParam("pageToken", pageToken);
+            }
+            JsonNode body = exchange(accessToken, builder.build().toUriString(), HttpMethod.GET, null);
+            JsonNode threads = body.path("threads");
+            if (threads.isArray()) {
+                count += threads.size();
+            }
+            pageToken = body.path("nextPageToken").asText(null);
+            if (!StringUtils.hasText(pageToken)) {
+                break;
+            }
+        } while (true);
+        return count;
     }
 
     private Map<String, JsonNode> fetchLabelsBatch(String accessToken, List<String> labelIds) {
@@ -160,9 +208,10 @@ public class GmailClient {
         return new MailFolderDto(folderId, label, count);
     }
 
-    private List<MailMessageSummaryDto> fetchSummariesBatch(String accessToken, List<String> ids, String folder) {
+    private List<MailMessageSummaryDto> fetchThreadSummariesBatch(
+            String accessToken, List<String> threadIds, String folder) {
         String boundary = "batch_gmail_" + UUID.randomUUID();
-        String requestBody = buildBatchRequestBody(boundary, ids);
+        String requestBody = buildThreadBatchRequestBody(boundary, threadIds);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
@@ -177,34 +226,37 @@ public class GmailClient {
                 : new String(response.getBody(), StandardCharsets.UTF_8);
         MediaType contentType = response.getHeaders().getContentType();
         String responseBoundary = extractBatchBoundary(contentType != null ? contentType.toString() : "");
-        List<JsonNode> messageBodies = parseBatchResponse(responseBody, responseBoundary);
+        List<JsonNode> threadBodies = parseBatchResponse(responseBody, responseBoundary);
 
-        Map<String, JsonNode> byId = new HashMap<>();
-        for (JsonNode body : messageBodies) {
+        Map<String, JsonNode> byThreadId = new HashMap<>();
+        for (JsonNode body : threadBodies) {
             String id = body.path("id").asText(null);
             if (StringUtils.hasText(id)) {
-                byId.put(id, body);
+                byThreadId.put(id, body);
             }
         }
 
-        List<MailMessageSummaryDto> result = new ArrayList<>(ids.size());
-        for (String id : ids) {
-            JsonNode body = byId.get(id);
+        List<MailMessageSummaryDto> result = new ArrayList<>(threadIds.size());
+        for (String threadId : threadIds) {
+            JsonNode body = byThreadId.get(threadId);
             if (body != null) {
-                result.add(toSummary(id, folder, body));
+                MailMessageSummaryDto summary = toThreadSummary(folder, body);
+                if (summary != null) {
+                    result.add(summary);
+                }
             }
         }
         return result;
     }
 
-    private String buildBatchRequestBody(String boundary, List<String> ids) {
+    private String buildThreadBatchRequestBody(String boundary, List<String> threadIds) {
         StringBuilder sb = new StringBuilder();
-        for (String id : ids) {
+        for (String threadId : threadIds) {
             sb.append("--").append(boundary).append("\r\n");
             sb.append("Content-Type: application/http\r\n");
             sb.append("\r\n");
-            sb.append("GET /gmail/v1/users/me/messages/")
-                    .append(id)
+            sb.append("GET /gmail/v1/users/me/threads/")
+                    .append(threadId)
                     .append("?")
                     .append(GmailApiConstants.METADATA_QUERY)
                     .append("\r\n\r\n");
@@ -310,10 +362,20 @@ public class GmailClient {
         return "";
     }
 
-    private MailMessageSummaryDto toSummary(String messageId, String folder, JsonNode body) {
-        HeaderValues headers = extractHeaders(body.path("payload"));
+    private MailMessageSummaryDto toThreadSummary(String folder, JsonNode thread) {
+        JsonNode latestMessage = findLatestMessage(thread.path("messages"));
+        if (latestMessage == null) {
+            return null;
+        }
+
+        String messageId = latestMessage.path("id").asText();
+        HeaderValues headers = extractHeaders(latestMessage.path("payload"));
         ParsedFrom parsedFrom = parseFrom(headers.from());
-        boolean unread = hasLabel(body, GmailApiConstants.LABEL_UNREAD);
+        boolean unread = hasUnreadMessage(thread.path("messages"));
+        String preview = thread.path("snippet").asText("");
+        if (!StringUtils.hasText(preview)) {
+            preview = latestMessage.path("snippet").asText("");
+        }
 
         return new MailMessageSummaryDto(
                 messageId,
@@ -321,9 +383,38 @@ public class GmailClient {
                 parsedFrom.displayName(),
                 parsedFrom.email(),
                 headers.subject(),
-                body.path("snippet").asText(""),
-                formatDate(body.path("internalDate").asText(null), headers.date()),
+                preview,
+                formatDate(latestMessage.path("internalDate").asText(null), headers.date()),
                 unread);
+    }
+
+    private static JsonNode findLatestMessage(JsonNode messages) {
+        if (!messages.isArray() || messages.isEmpty()) {
+            return null;
+        }
+
+        JsonNode latest = messages.get(0);
+        long latestDate = latest.path("internalDate").asLong(0);
+        for (JsonNode message : messages) {
+            long date = message.path("internalDate").asLong(0);
+            if (date >= latestDate) {
+                latestDate = date;
+                latest = message;
+            }
+        }
+        return latest;
+    }
+
+    private static boolean hasUnreadMessage(JsonNode messages) {
+        if (!messages.isArray()) {
+            return false;
+        }
+        for (JsonNode message : messages) {
+            if (hasLabel(message, GmailApiConstants.LABEL_UNREAD)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private MailMessageDetailDto toDetail(JsonNode body) {
@@ -336,6 +427,7 @@ public class GmailClient {
 
         return new MailMessageDetailDto(
                 id,
+                body.path("threadId").asText(),
                 folder,
                 parsedFrom.displayName(),
                 parsedFrom.email(),
@@ -375,7 +467,7 @@ public class GmailClient {
         }
     }
 
-    private static String toLabelId(String folder) {
+    private static String toListLabelId(String folder) {
         return switch (folder) {
             case GmailApiConstants.FOLDER_SENT -> GmailApiConstants.LABEL_SENT;
             case GmailApiConstants.FOLDER_DRAFT -> GmailApiConstants.LABEL_DRAFT;

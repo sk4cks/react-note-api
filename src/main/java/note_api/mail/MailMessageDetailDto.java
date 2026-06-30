@@ -2,6 +2,7 @@ package note_api.mail;
 
 public record MailMessageDetailDto(
         String id,
+        String threadId,
         String folder,
         String from,
         String fromEmail,
