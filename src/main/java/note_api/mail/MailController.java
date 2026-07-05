@@ -1,5 +1,9 @@
 package note_api.mail;
 
+import note_api.mail.dto.MailFolderDto;
+import note_api.mail.dto.MailMessageDetailDto;
+import note_api.mail.dto.MailMessageListDto;
+import note_api.mail.dto.SendMailRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;

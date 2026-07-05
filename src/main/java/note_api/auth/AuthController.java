@@ -1,5 +1,8 @@
 package note_api.auth;
 
+import note_api.auth.dto.LoginRequest;
+import note_api.auth.dto.TokenExchangeRequest;
+import note_api.auth.dto.TokenResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;

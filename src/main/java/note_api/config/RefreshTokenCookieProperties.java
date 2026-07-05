@@ -1,4 +1,4 @@
-package note_api.auth;
+package note_api.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

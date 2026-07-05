@@ -1,5 +1,8 @@
 package note_api.auth;
 
+import note_api.auth.dto.LoginRequest;
+import note_api.auth.dto.TokenExchangeRequest;
+import note_api.auth.dto.TokenResponse;
 import note_api.mail.MailGoogleNotLinkedException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;

@@ -1,4 +1,4 @@
-package note_api.mail;
+package note_api.mail.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

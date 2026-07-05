@@ -1,4 +1,4 @@
-package note_api.mail;
+package note_api.mail.dto;
 
 import java.util.List;
 

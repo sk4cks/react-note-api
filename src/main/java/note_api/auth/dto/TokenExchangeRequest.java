@@ -1,4 +1,4 @@
-package note_api.auth;
+package note_api.auth.dto;
 
 public record TokenExchangeRequest(
         String code,

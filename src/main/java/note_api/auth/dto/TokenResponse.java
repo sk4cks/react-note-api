@@ -1,4 +1,4 @@
-package note_api.auth;
+package note_api.auth.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 

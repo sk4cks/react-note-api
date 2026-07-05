@@ -1,4 +1,4 @@
-package note_api.mail;
+package note_api.mail.dto;
 
 public record MailMessageDetailDto(
         String id,
