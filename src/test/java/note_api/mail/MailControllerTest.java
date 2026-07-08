@@ -1,5 +1,10 @@
 package note_api.mail;
 
+import note_api.mail.dto.MailFolderDto;
+import note_api.mail.dto.MailMessageDetailDto;
+import note_api.mail.dto.MailMessageListDto;
+import note_api.mail.dto.MailMessageSummaryDto;
+import note_api.mail.dto.SendMailRequest;
 import note_api.config.CorsProperties;
 import note_api.config.SecurityConfig;
 import org.junit.jupiter.api.Test;
