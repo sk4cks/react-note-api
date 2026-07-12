@@ -1,9 +1,12 @@
 package note_api.auth;
 
 import note_api.auth.dto.LoginRequest;
+import note_api.auth.dto.RegisterRequest;
 import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
+import note_api.auth.dto.UserResponse;
 import jakarta.servlet.http.HttpServletResponse;
+import note_api.common.ValidationExceptionHandler;
 import note_api.config.CorsProperties;
 import note_api.config.SecurityConfig;
 import org.junit.jupiter.api.Test;
@@ -38,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * /api/auth/** 는 SecurityConfig에서 permitAll 이므로 JWT 없이 호출 가능.
  */
 @WebMvcTest(controllers = AuthController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, ValidationExceptionHandler.class})
 @EnableConfigurationProperties(CorsProperties.class)
 @TestPropertySource(properties = "app.cors.allowed-origins=http://localhost:8080")
 class AuthControllerTest {
@@ -71,6 +74,35 @@ class AuthControllerTest {
         .andExpect(jsonPath("$.refresh_token").doesNotExist());
 
     verify(refreshTokenCookieService).writeRefreshToken(any(), eq("refresh-secret"));
+  }
+
+  @Test
+  void register_returnsCreated() throws Exception {
+    UserResponse user =
+        new UserResponse(1L, "sk4cks", "sk4cks@note.local", "LOCAL", "ACTIVE");
+    when(authService.register(any(RegisterRequest.class))).thenReturn(user);
+
+    mockMvc
+        .perform(
+            post("/api/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":\"sk4cks\",\"password\":\"1234\"}"))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.userId").value("sk4cks"))
+        .andExpect(jsonPath("$.mailAddress").value("sk4cks@note.local"));
+  }
+
+  @Test
+  void register_returnsBadRequest_whenUserIdInvalid() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":\"bad-id!\",\"password\":\"1234\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value("아이디는 영문, 숫자, 밑줄만 사용할 수 있습니다"))
+        .andExpect(jsonPath("$.errors.userId").value("아이디는 영문, 숫자, 밑줄만 사용할 수 있습니다"));
   }
 
   /** SNS OAuth callback 후 authorization code → access_token 교환 (PKCE codeVerifier 포함) */

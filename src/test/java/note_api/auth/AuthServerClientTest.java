@@ -102,6 +102,34 @@ class AuthServerClientTest {
     server.verify();
   }
 
+  @Test
+  void register_postsJsonBodyToAuthServer() {
+    server
+        .expect(requestTo(AUTH_SERVER_BASE_URL + "/auth/register"))
+        .andExpect(method(HttpMethod.POST))
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+        .andExpect(content().json("{\"userId\":\"sk4cks\",\"password\":\"1234\"}"))
+        .andRespond(
+            withSuccess(
+                """
+                {
+                  "userSeq": 1,
+                  "userId": "sk4cks",
+                  "mailAddress": "sk4cks@note.local",
+                  "authProvider": "LOCAL",
+                  "status": "ACTIVE"
+                }
+                """,
+                MediaType.APPLICATION_JSON));
+
+    var result =
+        authServerClient.register(new note_api.auth.dto.RegisterRequest("sk4cks", "1234")).getBody();
+
+    assertThat(result.userId()).isEqualTo("sk4cks");
+    assertThat(result.mailAddress()).isEqualTo("sk4cks@note.local");
+    server.verify();
+  }
+
   /** authorization_code grant — form-urlencoded body에 code_verifier, client_id, client_secret 포함 */
   @Test
   void exchangeAuthorizationCode_postsFormBodyToTokenEndpoint() {

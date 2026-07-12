@@ -1,8 +1,10 @@
 package note_api.auth;
 
 import note_api.auth.dto.LoginRequest;
+import note_api.auth.dto.RegisterRequest;
 import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
+import note_api.auth.dto.UserResponse;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -78,6 +80,18 @@ class AuthServiceTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("Login failed: bad credentials")
         .hasCause(ex);
+  }
+
+  @Test
+  void register_returnsUser_whenAuthServerSucceeds() {
+    UserResponse user = new UserResponse(1L, "sk4cks", "sk4cks@note.local", "LOCAL", "ACTIVE");
+    RegisterRequest request = new RegisterRequest("sk4cks", "1234");
+    when(authServerClient.register(request)).thenReturn(ResponseEntity.ok(user));
+
+    UserResponse result = authService.register(request);
+
+    assertThat(result).isEqualTo(user);
+    verify(authServerClient).register(request);
   }
 
   /** SNS OAuth code → token 교환 */

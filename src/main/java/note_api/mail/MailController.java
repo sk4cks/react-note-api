@@ -26,16 +26,12 @@ public class MailController {
     private final MailService mailService;
 
     @GetMapping("/messages")
-    public MailMessageListDto listMessages(
-            @AuthenticationPrincipal Jwt jwt,
-            @RequestParam(defaultValue = "inbox") String folder,
-            @RequestParam(required = false) String pageToken) {
+    public MailMessageListDto listMessages(@AuthenticationPrincipal Jwt jwt, @RequestParam(defaultValue = "inbox") String folder, @RequestParam(required = false) String pageToken) {
         return mailService.listMessages(jwt.getSubject(), folder, pageToken);
     }
 
     @GetMapping("/messages/{id}")
-    public MailMessageDetailDto getMessage(
-            @AuthenticationPrincipal Jwt jwt, @PathVariable String id) {
+    public MailMessageDetailDto getMessage(@AuthenticationPrincipal Jwt jwt, @PathVariable String id) {
         return mailService.getMessage(jwt.getSubject(), id);
     }
 

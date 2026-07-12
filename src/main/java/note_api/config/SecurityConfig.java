@@ -22,6 +22,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
         http.authorizeHttpRequests(request -> request
+                .requestMatchers("/api/auth/onboarding-status", "/api/auth/social/complete").authenticated()
                 .requestMatchers("/api/auth/**", "/error").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll());
