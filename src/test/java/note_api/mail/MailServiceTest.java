@@ -6,9 +6,9 @@ import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailMessageSummaryDto;
 import note_api.mail.dto.SendMailRequest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -21,12 +21,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * MailService 단위 테스트.
- * <p>
- * @WebMvcTest / @SpringBootTest 없이 Mockito만 사용:
- * - AuthServerClient, GmailClient를 @Mock으로 대체
- * - principal → Google access token 조회 → Gmail API 위임 흐름 검증
- * - HTTP·Security 계층은 MailControllerTest에서 검증
+ * MailService 단위 테스트 — gmail provider 위임 경로.
  */
 @ExtendWith(MockitoExtension.class)
 class MailServiceTest {
@@ -36,10 +31,16 @@ class MailServiceTest {
 
   @Mock private AuthServerClient authServerClient;
   @Mock private GmailClient gmailClient;
+  @Mock private ImapMailProvider imapMailProvider;
 
-  @InjectMocks private MailService mailService;
+  private MailService mailService;
 
-  /** Auth Server에서 Google token 조회 후 Gmail 목록 API에 위임 */
+  @BeforeEach
+  void setUp() {
+    GmailMailProvider gmailMailProvider = new GmailMailProvider(authServerClient, gmailClient);
+    mailService = new MailService("gmail", gmailMailProvider, imapMailProvider);
+  }
+
   @Test
   void listMessages_fetchesTokenAndDelegatesToGmailClient() {
     MailMessageListDto expected =
@@ -59,7 +60,6 @@ class MailServiceTest {
     verify(gmailClient).listMessages(GOOGLE_TOKEN, "inbox", GmailApiConstants.DEFAULT_LIST_MAX_RESULTS, null);
   }
 
-  /** 이미 읽은 메일이면 markThreadAsRead 호출 없이 그대로 반환 */
   @Test
   void getMessage_returnsDetailAsIs_whenAlreadyRead() {
     MailMessageDetailDto readDetail = sampleDetail(false);
@@ -73,10 +73,6 @@ class MailServiceTest {
     verifyNoMoreInteractions(gmailClient);
   }
 
-  /**
-   * 안 읽은 메일이면 thread를 읽음 처리한 뒤 unread=false 로 반환.
-   * 상세 열람 시 자동 읽음 처리 UX.
-   */
   @Test
   void getMessage_marksThreadAsRead_whenUnread() {
     MailMessageDetailDto unreadDetail = sampleDetail(true);
@@ -91,10 +87,6 @@ class MailServiceTest {
     assertThat(result.subject()).isEqualTo("Hello");
   }
 
-  /**
-   * 읽음 처리 실패 시에도 상세 본문은 반환 (로그만 남기고 swallow).
-   * Gmail API 일시 오류로 상세 조회 자체가 실패하지 않도록.
-   */
   @Test
   void getMessage_returnsOriginalDetail_whenMarkAsReadFails() {
     MailMessageDetailDto unreadDetail = sampleDetail(true);
@@ -110,7 +102,6 @@ class MailServiceTest {
     assertThat(result.unread()).isTrue();
   }
 
-  /** 발송 — token 조회 후 Gmail send API 호출 */
   @Test
   void sendMessage_fetchesTokenAndSends() {
     SendMailRequest request = new SendMailRequest("to@example.com", "Subject", "Body");
@@ -121,7 +112,6 @@ class MailServiceTest {
     verify(gmailClient).sendMessage(GOOGLE_TOKEN, "to@example.com", "Subject", "Body");
   }
 
-  /** 폴더별 스레드 수 — inbox badge 등에 사용 */
   @Test
   void getFolderStats_fetchesTokenAndReturnsFolders() {
     List<MailFolderDto> folders = List.of(new MailFolderDto("inbox", "받은편지함", 5));
@@ -132,6 +122,17 @@ class MailServiceTest {
 
     assertThat(result).isEqualTo(folders);
     verify(gmailClient).getFolderStats(GOOGLE_TOKEN);
+  }
+
+  @Test
+  void listMessages_delegatesToImap_whenProviderIsImap() {
+    GmailMailProvider gmail = new GmailMailProvider(authServerClient, gmailClient);
+    MailService imapService = new MailService("imap", gmail, imapMailProvider);
+    MailMessageListDto expected = new MailMessageListDto(List.of(), null);
+    when(imapMailProvider.listMessages("sk4cks", "inbox", null)).thenReturn(expected);
+
+    assertThat(imapService.listMessages("sk4cks", "inbox", null)).isEqualTo(expected);
+    verify(imapMailProvider).listMessages("sk4cks", "inbox", null);
   }
 
   private static MailMessageDetailDto sampleDetail(boolean unread) {

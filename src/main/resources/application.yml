@@ -12,6 +12,9 @@ oauth2:
     client-secret: react-note-secret
 
 app:
+  mail:
+    # 로컬 Mailcow IMAP. k8s 프로파일에서는 gmail 로 유지.
+    provider: ${MAIL_PROVIDER:imap}
   cors:
     allowed-origins:
       - http://localhost:8080

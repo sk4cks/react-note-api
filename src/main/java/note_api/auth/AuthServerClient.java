@@ -1,12 +1,14 @@
 package note_api.auth;
 
 import note_api.auth.dto.LoginRequest;
+import note_api.auth.dto.MailboxCredentialsResponse;
 import note_api.auth.dto.RegisterRequest;
 import note_api.auth.dto.SocialUserStatusResponse;
 import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
 import note_api.auth.dto.UserResponse;
 import note_api.mail.MailGoogleNotLinkedException;
+import note_api.mail.MailMailboxNotFoundException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -222,6 +224,33 @@ public class AuthServerClient {
             return accessToken;
         } catch (HttpClientErrorException.NotFound ex) {
             throw new MailGoogleNotLinkedException();
+        }
+    }
+
+    /**
+     * Mailcow IMAP/SMTP 자격 조회 — {@code GET /auth/users/{userId}/mailbox} (internal).
+     * 404 이면 메일함 비밀번호 미저장 또는 사용자 없음 → {@link MailMailboxNotFoundException}.
+     */
+    public MailboxCredentialsResponse fetchMailboxCredentials(String userId) {
+        String url = authServerBaseUrl + "/auth/users/" + userId + "/mailbox";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Internal-Api-Key", internalApiKey);
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        try {
+            ResponseEntity<MailboxCredentialsResponse> response = restTemplate.exchange(
+                    url, HttpMethod.GET, entity, MailboxCredentialsResponse.class);
+
+            MailboxCredentialsResponse body = response.getBody();
+
+            if (body == null || !StringUtils.hasText(body.mailAddress()) || !StringUtils.hasText(body.password())) {
+                throw new IllegalStateException("Mailbox credentials missing in auth server response");
+            }
+
+            return body;
+        } catch (HttpClientErrorException.NotFound ex) {
+            throw new MailMailboxNotFoundException(userId);
         }
     }
 }

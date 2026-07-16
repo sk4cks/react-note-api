@@ -17,4 +17,12 @@ public class MailExceptionHandler {
                         "code", "MAIL_GOOGLE_NOT_LINKED",
                         "message", ex.getMessage()));
     }
+
+    @ExceptionHandler(MailMailboxNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleMailboxNotFound(MailMailboxNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of(
+                        "code", "MAIL_MAILBOX_NOT_FOUND",
+                        "message", ex.getMessage()));
+    }
 }

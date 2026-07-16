@@ -1,65 +1,41 @@
 package note_api.mail;
 
-import note_api.auth.AuthServerClient;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.SendMailRequest;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Locale;
 
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class MailService {
 
-    private final AuthServerClient authServerClient;
-    private final GmailClient gmailClient;
+    private final MailProvider mailProvider;
+
+    public MailService(
+            @Value("${app.mail.provider:gmail}") String provider,
+            GmailMailProvider gmailMailProvider,
+            ImapMailProvider imapMailProvider) {
+        String normalized = provider == null ? "gmail" : provider.trim().toLowerCase(Locale.ROOT);
+        this.mailProvider = "imap".equals(normalized) ? imapMailProvider : gmailMailProvider;
+    }
 
     public MailMessageListDto listMessages(String principal, String folder, String pageToken) {
-        String googleToken = authServerClient.fetchGoogleAccessToken(principal);
-        return gmailClient.listMessages(
-                googleToken, folder, GmailApiConstants.DEFAULT_LIST_MAX_RESULTS, pageToken);
+        return mailProvider.listMessages(principal, folder, pageToken);
     }
 
     public MailMessageDetailDto getMessage(String principal, String messageId) {
-        String googleToken = authServerClient.fetchGoogleAccessToken(principal);
-        MailMessageDetailDto detail = gmailClient.getMessage(googleToken, messageId);
-        if (!detail.unread()) {
-            return detail;
-        }
-        try {
-            gmailClient.markThreadAsRead(googleToken, detail.threadId());
-        } catch (RuntimeException ex) {
-            log.warn("Failed to mark thread as read: {}", detail.threadId(), ex);
-            return detail;
-        }
-
-        return new MailMessageDetailDto(
-                detail.id(),
-                detail.threadId(),
-                detail.folder(),
-                detail.from(),
-                detail.fromEmail(),
-                detail.to(),
-                detail.subject(),
-                detail.preview(),
-                detail.body(),
-                detail.bodyContentType(),
-                detail.date(),
-                false);
+        return mailProvider.getMessage(principal, messageId);
     }
 
     public void sendMessage(String principal, SendMailRequest request) {
-        String googleToken = authServerClient.fetchGoogleAccessToken(principal);
-        gmailClient.sendMessage(googleToken, request.to(), request.subject(), request.body());
+        mailProvider.sendMessage(principal, request);
     }
 
     public List<MailFolderDto> getFolderStats(String principal) {
-        String googleToken = authServerClient.fetchGoogleAccessToken(principal);
-        return gmailClient.getFolderStats(googleToken);
+        return mailProvider.getFolderStats(principal);
     }
 }

@@ -4,6 +4,7 @@ import note_api.auth.dto.LoginRequest;
 import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
 import note_api.mail.MailGoogleNotLinkedException;
+import note_api.mail.MailMailboxNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -251,5 +252,44 @@ class AuthServerClientTest {
     assertThatThrownBy(() -> authServerClient.fetchGoogleAccessToken("sk4cks@gmail.com"))
         .isInstanceOf(MailGoogleNotLinkedException.class)
         .hasMessageContaining("Google login with Gmail scope is required");
+  }
+
+  @Test
+  void fetchMailboxCredentials_sendsInternalHeaderAndReturnsBody() {
+    server
+        .expect(requestTo(AUTH_SERVER_BASE_URL + "/auth/users/sk4cks/mailbox"))
+        .andExpect(method(HttpMethod.GET))
+        .andExpect(header("X-Internal-Api-Key", INTERNAL_API_KEY))
+        .andRespond(
+            withSuccess(
+                """
+                {
+                  "mailAddress":"sk4cks@note.local",
+                  "password":"secret",
+                  "imapHost":"127.0.0.1",
+                  "imapPort":993,
+                  "smtpHost":"127.0.0.1",
+                  "smtpPort":587
+                }
+                """,
+                MediaType.APPLICATION_JSON));
+
+    var creds = authServerClient.fetchMailboxCredentials("sk4cks");
+
+    assertThat(creds.mailAddress()).isEqualTo("sk4cks@note.local");
+    assertThat(creds.password()).isEqualTo("secret");
+    assertThat(creds.imapPort()).isEqualTo(993);
+    server.verify();
+  }
+
+  @Test
+  void fetchMailboxCredentials_throwsWhenNotFound() {
+    server
+        .expect(requestTo(AUTH_SERVER_BASE_URL + "/auth/users/missing/mailbox"))
+        .andRespond(withStatus(org.springframework.http.HttpStatus.NOT_FOUND));
+
+    assertThatThrownBy(() -> authServerClient.fetchMailboxCredentials("missing"))
+        .isInstanceOf(MailMailboxNotFoundException.class)
+        .hasMessageContaining("missing");
   }
 }
