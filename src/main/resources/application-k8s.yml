@@ -16,7 +16,8 @@ auth-server:
 
 app:
   mail:
-    provider: gmail
+    # EC2 Mailcow IMAP. ConfigMap MAIL_PROVIDER 로 덮어씀 (기본 imap)
+    provider: ${MAIL_PROVIDER:imap}
   cors:
     allowed-origins:
       - https://app.13.239.220.205.nip.io
