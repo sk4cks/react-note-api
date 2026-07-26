@@ -1,11 +1,12 @@
+// react-note-api repo 루트에 Jenkinsfile 로 복사
 pipeline {
   agent any
   options {
     buildDiscarder(logRotator(numToKeepStr: '1', artifactNumToKeepStr: '1'))
   }
   environment {
-    AWS_REGION = 'ap-southeast-2'
-    ECR_URI = '019511184889.dkr.ecr.ap-southeast-2.amazonaws.com/react-note-api'
+    AWS_REGION = 'ap-northeast-2'
+    ECR_URI = '019511184889.dkr.ecr.ap-northeast-2.amazonaws.com/react-note-api'
     GITOPS_REPO = 'https://github.com/sk4cks/react-note-deploy.git'
     GITOPS_MANIFEST = 'react-note-api'
   }
