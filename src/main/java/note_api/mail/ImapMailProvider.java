@@ -157,8 +157,8 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * SMTP STARTTLS로 메일을 발송한다.
-     * From은 Auth mailbox 응답의 {@code mailAddress}.
+     * SMTP STARTTLS로 메일을 발송한 뒤, IMAP Sent 폴더에 사본을 APPEND한다.
+     * (Mailcow는 SMTP만으로 Sent에 자동 저장하지 않음 — 클라이언트가 저장해야 함)
      *
      * @param userId  JWT subject
      * @param request to / subject / body
@@ -175,8 +175,29 @@ public class ImapMailProvider implements MailProvider {
             message.setText(request.body() != null ? request.body() : "", "UTF-8");
             message.setSentDate(new Date());
             Transport.send(message);
+            appendToSent(creds, message);
         } catch (MessagingException ex) {
             throw new IllegalStateException("SMTP send failed for user " + userId, ex);
+        }
+    }
+
+    /**
+     * 발송한 MimeMessage를 IMAP Sent에 읽음(\\Seen) 상태로 저장한다.
+     */
+    private void appendToSent(MailboxCredentialsResponse creds, MimeMessage message)
+            throws MessagingException {
+        try (ImapSession session = openImap(creds)) {
+            Folder sent = session.store().getFolder(toImapFolderName("sent"));
+            if (!sent.exists() && !sent.create(Folder.HOLDS_MESSAGES)) {
+                throw new MessagingException("Cannot create Sent folder");
+            }
+            sent.open(Folder.READ_WRITE);
+            try {
+                message.setFlag(Flags.Flag.SEEN, true);
+                sent.appendMessages(new Message[] {message});
+            } finally {
+                closeQuietly(sent);
+            }
         }
     }
 
@@ -250,18 +271,16 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * SPA folder id에 해당하는 IMAP Folder를 연다. 폴더가 없으면 INBOX로 fallback.
-     *
-     * @param store  연결된 IMAP Store
-     * @param folder SPA 폴더 id
-     * @param mode   {@link Folder#READ_ONLY} 또는 {@link Folder#READ_WRITE}
-     * @return 열린 Folder (호출부가 close)
+     * SPA folder id에 해당하는 IMAP Folder를 연다.
+     * Sent/Drafts/Trash가 없으면 생성하고, 그래도 실패하면 예외.
      */
     private static Folder openFolder(Store store, String folder, int mode) throws MessagingException {
         String name = toImapFolderName(folder);
         Folder imapFolder = store.getFolder(name);
         if (!imapFolder.exists()) {
-            imapFolder = store.getFolder("INBOX");
+            if ("INBOX".equals(name) || !imapFolder.create(Folder.HOLDS_MESSAGES)) {
+                throw new MessagingException("IMAP folder not found: " + name);
+            }
         }
         imapFolder.open(mode);
         return imapFolder;
