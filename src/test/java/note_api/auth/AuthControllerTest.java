@@ -6,7 +6,7 @@ import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
 import note_api.auth.dto.UserResponse;
 import jakarta.servlet.http.HttpServletResponse;
-import note_api.common.ValidationExceptionHandler;
+import note_api.common.exception.GlobalExceptionHandler;
 import note_api.config.CorsProperties;
 import note_api.config.SecurityConfig;
 import org.junit.jupiter.api.Test;
@@ -41,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * /api/auth/** 는 SecurityConfig에서 permitAll 이므로 JWT 없이 호출 가능.
  */
 @WebMvcTest(controllers = AuthController.class)
-@Import({SecurityConfig.class, ValidationExceptionHandler.class})
+@Import({SecurityConfig.class, GlobalExceptionHandler.class})
 @EnableConfigurationProperties(CorsProperties.class)
 @TestPropertySource(properties = "app.cors.allowed-origins=http://localhost:8080")
 class AuthControllerTest {

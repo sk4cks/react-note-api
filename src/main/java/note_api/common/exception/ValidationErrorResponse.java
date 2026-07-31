@@ -1,4 +1,4 @@
-package note_api.common;
+package note_api.common.exception;
 
 import java.util.Map;
 

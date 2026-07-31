@@ -5,6 +5,7 @@ import note_api.auth.dto.RegisterRequest;
 import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
 import note_api.auth.dto.UserResponse;
+import note_api.common.exception.AuthServerException;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,22 +65,27 @@ class AuthServiceTest {
         .hasMessageContaining("Login failed: empty response");
   }
 
-  /** 4xx/5xx 응답은 IllegalStateException으로 래핑 (본문 메시지 포함) */
+  /** Auth Server 401 등 4xx는 AuthServerException으로 status+body 전파 */
   @Test
   void login_throws_whenAuthServerReturnsError() {
+    String body = "{\"code\":\"INVALID_CREDENTIALS\",\"message\":\"Invalid userId or password\"}";
     HttpClientErrorException ex =
         HttpClientErrorException.create(
             HttpStatus.UNAUTHORIZED,
             "Unauthorized",
             HttpHeaders.EMPTY,
-            "bad credentials".getBytes(StandardCharsets.UTF_8),
+            body.getBytes(StandardCharsets.UTF_8),
             StandardCharsets.UTF_8);
     when(authServerClient.login(LOGIN_REQUEST)).thenThrow(ex);
 
     assertThatThrownBy(() -> authService.login(LOGIN_REQUEST))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("Login failed: bad credentials")
-        .hasCause(ex);
+        .isInstanceOf(AuthServerException.class)
+        .satisfies(
+            thrown -> {
+              AuthServerException authEx = (AuthServerException) thrown;
+              assertThat(authEx.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
+              assertThat(authEx.getResponseBody()).isEqualTo(body);
+            });
   }
 
   @Test

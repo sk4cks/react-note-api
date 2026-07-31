@@ -7,6 +7,7 @@ import note_api.auth.dto.SocialCompleteRequest;
 import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
 import note_api.auth.dto.UserResponse;
+import note_api.common.exception.AuthServerException;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,9 +27,7 @@ import java.io.IOException;
  *   <li>access_token — JSON body (프론트 sessionStorage)</li>
  *   <li>refresh_token — Controller에서 HttpOnly cookie로 저장 ({@link RefreshTokenCookieService})</li>
  * </ul>
- * Auth Server 4xx/5xx는 메서드마다 처리가 다르다.
- * login/token/refresh 는 {@link IllegalStateException}(대개 500),
- * register/social complete 는 {@link ResponseStatusException}으로 Auth 상태코드를 그대로 전달(예: 409).
+ * register/social complete/login 4xx 는 {@link AuthServerException}으로 Auth status+body 를 그대로 전달.
  */
 @Service
 public class AuthService {
@@ -53,7 +52,7 @@ public class AuthService {
             }
             return body;
         } catch (HttpStatusCodeException ex) {
-            throw new IllegalStateException("Login failed: " + ex.getResponseBodyAsString(), ex);
+            throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
         }
     }
 
@@ -61,7 +60,7 @@ public class AuthService {
      * 로컬 회원가입.
      * Auth Server {@code POST /auth/register} → SYS_USER INSERT (비밀번호 해시, mailAddress 부여).
      * 토큰은 발급하지 않음 — 가입 후 프론트가 /login 으로 이동.
-     * 중복 userId 등은 Auth의 409를 {@link ResponseStatusException}으로 전파.
+     * 중복 userId 등은 Auth의 409를 {@link AuthServerException}으로 전파.
      */
     public UserResponse register(RegisterRequest request) {
         try {
@@ -72,7 +71,7 @@ public class AuthService {
             }
             return body;
         } catch (HttpStatusCodeException ex) {
-            throw new ResponseStatusException(ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
+            throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
         }
     }
 
@@ -121,7 +120,7 @@ public class AuthService {
             }
             return body;
         } catch (HttpStatusCodeException ex) {
-            throw new ResponseStatusException(ex.getStatusCode(), ex.getResponseBodyAsString(), ex);
+            throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
         }
     }
 
