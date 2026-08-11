@@ -19,6 +19,7 @@ public class RestTemplateConfig {
                 .filter(StringHttpMessageConverter.class::isInstance)
                 .map(StringHttpMessageConverter.class::cast)
                 .forEach(converter -> converter.setDefaultCharset(StandardCharsets.UTF_8));
+
         return restTemplate;
     }
 }

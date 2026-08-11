@@ -39,6 +39,7 @@ public class GmailMailProvider implements MailProvider {
     @Override
     public MailMessageListDto listMessages(String userId, String folder, String pageToken) {
         String googleToken = authServerClient.fetchGoogleAccessToken(userId);
+
         return gmailClient.listMessages(
                 googleToken, folder, GmailApiConstants.DEFAULT_LIST_MAX_RESULTS, pageToken);
     }
@@ -62,8 +63,10 @@ public class GmailMailProvider implements MailProvider {
         }
         try {
             gmailClient.markThreadAsRead(googleToken, detail.threadId());
+
         } catch (RuntimeException ex) {
             log.warn("Failed to mark thread as read: {}", detail.threadId(), ex);
+
             return detail;
         }
 
@@ -104,6 +107,7 @@ public class GmailMailProvider implements MailProvider {
     @Override
     public List<MailFolderDto> getFolderStats(String userId) {
         String googleToken = authServerClient.fetchGoogleAccessToken(userId);
+
         return gmailClient.getFolderStats(googleToken);
     }
 }

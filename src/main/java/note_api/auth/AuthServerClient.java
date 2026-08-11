@@ -6,6 +6,7 @@ import note_api.auth.dto.RegisterRequest;
 import note_api.auth.dto.SocialUserStatusResponse;
 import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
+import note_api.auth.dto.UserIdAvailabilityResponse;
 import note_api.auth.dto.UserResponse;
 import note_api.mail.MailGoogleNotLinkedException;
 import note_api.mail.MailMailboxNotFoundException;
@@ -70,6 +71,20 @@ public class AuthServerClient {
     }
 
     /**
+     * 아이디 사용 가능 여부 — {@code GET /auth/check-userid}.
+     */
+    public UserIdAvailabilityResponse checkUserId(String userId) {
+        String url = UriComponentsBuilder
+                .fromUriString(authServerBaseUrl + "/auth/check-userid")
+                .queryParam("userId", userId)
+                .build()
+                .encode(StandardCharsets.UTF_8)
+                .toUriString();
+
+        return restTemplate.getForObject(url, UserIdAvailabilityResponse.class);
+    }
+
+    /**
      * SNS 로그인 시작 URL 생성 (브라우저 302 Location).
      * Auth Server {@code GET /auth/social/prepare/{provider}} — PKCE state/code_challenge/redirect_uri 전달.
      * public-url 을 쓰는 이유: 브라우저가 직접 Auth로 가야 하므로 ClusterIP가 아닌 외부 URL.
@@ -93,6 +108,7 @@ public class AuthServerClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<LoginRequest> entity = new HttpEntity<>(request, headers);
+
         return restTemplate.postForEntity(loginUrl, entity, TokenResponse.class);
     }
 
@@ -104,6 +120,7 @@ public class AuthServerClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<RegisterRequest> entity = new HttpEntity<>(request, headers);
+
         return restTemplate.postForEntity(registerUrl, entity, UserResponse.class);
     }
 
@@ -130,6 +147,7 @@ public class AuthServerClient {
         if (body == null) {
             return new SocialUserStatus(false, null);
         }
+
         return new SocialUserStatus(body.registered(), body.userId());
     }
 
@@ -221,7 +239,9 @@ public class AuthServerClient {
             if (!StringUtils.hasText(accessToken)) {
                 throw new IllegalStateException("Google access token missing in auth server response");
             }
+
             return accessToken;
+
         } catch (HttpClientErrorException.NotFound ex) {
             throw new MailGoogleNotLinkedException();
         }
@@ -249,6 +269,7 @@ public class AuthServerClient {
             }
 
             return body;
+
         } catch (HttpClientErrorException.NotFound ex) {
             throw new MailMailboxNotFoundException(userId);
         }

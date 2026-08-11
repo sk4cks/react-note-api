@@ -50,6 +50,7 @@ public class GmailClient {
                     GmailApiConstants.QUERY_INBOX_PRIMARY,
                     null);
         }
+
         return listThreads(
                 accessToken, folder, maxResults, pageToken, null, toListLabelId(folder));
     }
@@ -98,6 +99,7 @@ public class GmailClient {
         }
 
         List<MailMessageSummaryDto> messages = fetchThreadSummariesBatch(accessToken, threadIds, folder);
+
         return new MailMessageListDto(messages, nextPageToken);
     }
 
@@ -108,6 +110,7 @@ public class GmailClient {
                 .toUriString();
 
         JsonNode body = exchange(accessToken, url, HttpMethod.GET, null);
+
         return messageParser.toDetail(body);
     }
 
@@ -169,6 +172,7 @@ public class GmailClient {
                 break;
             }
         } while (true);
+
         return count;
     }
 
@@ -207,12 +211,14 @@ public class GmailClient {
                 labelsById.put(id, body);
             }
         }
+
         return labelsById;
     }
 
     private static MailFolderDto toFolderDto(
             String folderId, String label, JsonNode body, String countField) {
         int count = body != null ? body.path(countField).asInt(0) : 0;
+
         return new MailFolderDto(folderId, label, count);
     }
 
@@ -254,6 +260,7 @@ public class GmailClient {
                 }
             }
         }
+
         return result;
     }
 
@@ -270,6 +277,7 @@ public class GmailClient {
                     .append("\r\n\r\n");
         }
         sb.append("--").append(boundary).append("--\r\n");
+
         return sb.toString();
     }
 
@@ -284,6 +292,7 @@ public class GmailClient {
         HttpEntity<String> entity;
         try {
             entity = new HttpEntity<>(body == null ? null : objectMapper.writeValueAsString(body), headers);
+
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to serialize Gmail request", ex);
         }
@@ -295,6 +304,7 @@ public class GmailClient {
         }
         try {
             return objectMapper.readTree(responseBody);
+
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to parse Gmail response", ex);
         }
@@ -325,6 +335,7 @@ public class GmailClient {
         if (value.chars().allMatch(ch -> ch < 128)) {
             return value;
         }
+
         return "=?UTF-8?B?"
                 + Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8))
                 + "?=";

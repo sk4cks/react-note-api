@@ -81,6 +81,7 @@ final class GmailMessageParser {
                 latest = message;
             }
         }
+
         return latest;
     }
 
@@ -94,6 +95,7 @@ final class GmailMessageParser {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -108,6 +110,7 @@ final class GmailMessageParser {
         if (hasLabel(body, GmailApiConstants.LABEL_SENT)) {
             return GmailApiConstants.FOLDER_SENT;
         }
+
         return GmailApiConstants.FOLDER_INBOX;
     }
 
@@ -121,6 +124,7 @@ final class GmailMessageParser {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -144,6 +148,7 @@ final class GmailMessageParser {
                 }
             }
         }
+
         return new HeaderValues(from, to, subject, date);
     }
 
@@ -157,6 +162,7 @@ final class GmailMessageParser {
         if (StringUtils.hasText(plain)) {
             return new BodyContent(plain, GmailApiConstants.MIME_TEXT_PLAIN);
         }
+
         return new BodyContent("", GmailApiConstants.MIME_TEXT_PLAIN);
     }
 
@@ -178,11 +184,13 @@ final class GmailMessageParser {
                 return found;
             }
         }
+
         return "";
     }
 
     private static String decodeBase64Url(String data) {
         byte[] decoded = Base64.getUrlDecoder().decode(data);
+
         return new String(decoded, StandardCharsets.UTF_8);
     }
 
@@ -195,10 +203,13 @@ final class GmailMessageParser {
         if (matcher.matches()) {
             if (matcher.group(2) != null) {
                 String name = matcher.group(1) != null ? matcher.group(1).trim() : matcher.group(2);
+
                 return new ParsedFrom(name, matcher.group(2));
             }
+
             return new ParsedFrom(matcher.group(3), matcher.group(3));
         }
+
         return new ParsedFrom(fromHeader, fromHeader);
     }
 
@@ -207,10 +218,12 @@ final class GmailMessageParser {
         if (StringUtils.hasText(internalDate)) {
             try {
                 return Instant.ofEpochMilli(Long.parseLong(internalDate)).toString();
+
             } catch (NumberFormatException ignored) {
                 // fall through
             }
         }
+
         return StringUtils.hasText(headerDate) ? headerDate : Instant.now().toString();
     }
 

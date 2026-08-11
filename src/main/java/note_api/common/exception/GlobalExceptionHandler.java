@@ -35,6 +35,7 @@ public class GlobalExceptionHandler {
         String message = errors.values().stream()
                 .findFirst()
                 .orElse("요청 값이 올바르지 않습니다");
+
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ValidationErrorResponse("VALIDATION_FAILED", message, errors));
     }
@@ -63,6 +64,7 @@ public class GlobalExceptionHandler {
                 if (node.hasNonNull("message")) {
                     body.put("message", node.get("message").asText());
                 }
+
             } catch (Exception ignored) {
                 body.put("message", ex.getResponseBody());
             }

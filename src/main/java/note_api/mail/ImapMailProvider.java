@@ -93,10 +93,12 @@ public class ImapMailProvider implements MailProvider {
 
                 int nextOffset = offset + summaries.size();
                 String nextPage = nextOffset < total ? String.valueOf(nextOffset) : null;
+
                 return new MailMessageListDto(summaries, nextPage);
             } finally {
                 closeQuietly(imapFolder);
             }
+
         } catch (MessagingException | IOException ex) {
             throw new IllegalStateException("IMAP list failed for user " + userId, ex);
         }
@@ -129,10 +131,13 @@ public class ImapMailProvider implements MailProvider {
                 if (unread) {
                     try {
                         message.setFlag(Flags.Flag.SEEN, true);
+
                     } catch (MessagingException ex) {
                         log.warn("Failed to mark IMAP message as read: {}", messageId, ex);
+
                         return detail;
                     }
+
                     return new MailMessageDetailDto(
                             detail.id(),
                             detail.threadId(),
@@ -147,10 +152,12 @@ public class ImapMailProvider implements MailProvider {
                             detail.date(),
                             false);
                 }
+
                 return detail;
             } finally {
                 closeQuietly(imapFolder);
             }
+
         } catch (MessagingException | IOException ex) {
             throw new IllegalStateException("IMAP get failed for user " + userId, ex);
         }
@@ -176,6 +183,7 @@ public class ImapMailProvider implements MailProvider {
             message.setSentDate(new Date());
             Transport.send(message);
             appendToSent(creds, message);
+
         } catch (MessagingException ex) {
             throw new IllegalStateException("SMTP send failed for user " + userId, ex);
         }
@@ -215,6 +223,7 @@ public class ImapMailProvider implements MailProvider {
             Folder inbox = openFolder(session.store(), "inbox", Folder.READ_ONLY);
             try {
                 int unread = inbox.getUnreadMessageCount();
+
                 return List.of(
                         new MailFolderDto("inbox", "받은편지함", unread),
                         new MailFolderDto("sent", "보낸편지함", 0),
@@ -222,6 +231,7 @@ public class ImapMailProvider implements MailProvider {
             } finally {
                 closeQuietly(inbox);
             }
+
         } catch (MessagingException ex) {
             throw new IllegalStateException("IMAP folder stats failed for user " + userId, ex);
         }
@@ -245,6 +255,7 @@ public class ImapMailProvider implements MailProvider {
         Session session = Session.getInstance(props);
         Store store = session.getStore("imaps");
         store.connect(creds.imapHost(), creds.imapPort(), creds.mailAddress(), creds.password());
+
         return new ImapSession(store);
     }
 
@@ -262,6 +273,7 @@ public class ImapMailProvider implements MailProvider {
         props.put("mail.smtp.starttls.enable", "true");
         props.put("mail.smtp.ssl.trust", "*");
         props.put("mail.smtp.ssl.checkserveridentity", "false");
+
         return Session.getInstance(props, new jakarta.mail.Authenticator() {
             @Override
             protected jakarta.mail.PasswordAuthentication getPasswordAuthentication() {
@@ -283,6 +295,7 @@ public class ImapMailProvider implements MailProvider {
             }
         }
         imapFolder.open(mode);
+
         return imapFolder;
     }
 
@@ -314,6 +327,7 @@ public class ImapMailProvider implements MailProvider {
         }
         try {
             return Math.max(0, Integer.parseInt(pageToken));
+
         } catch (NumberFormatException ex) {
             return 0;
         }
@@ -333,6 +347,7 @@ public class ImapMailProvider implements MailProvider {
         String body = extractText(message);
         String preview = previewOf(body);
         boolean unread = !message.isSet(Flags.Flag.SEEN);
+
         return new MailMessageSummaryDto(
                 String.valueOf(uid),
                 folder,
@@ -359,6 +374,7 @@ public class ImapMailProvider implements MailProvider {
         String subject = message.getSubject() != null ? message.getSubject() : "(no subject)";
         String body = extractText(message);
         boolean unread = !message.isSet(Flags.Flag.SEEN);
+
         return new MailMessageDetailDto(
                 String.valueOf(uid),
                 String.valueOf(uid),
@@ -382,6 +398,7 @@ public class ImapMailProvider implements MailProvider {
         if (addresses[0] instanceof InternetAddress internetAddress) {
             return internetAddress.getAddress() != null ? internetAddress.getAddress() : "";
         }
+
         return addresses[0].toString();
     }
 
@@ -397,8 +414,10 @@ public class ImapMailProvider implements MailProvider {
             if (StringUtils.hasText(internetAddress.getPersonal())) {
                 return internetAddress.getPersonal();
             }
+
             return internetAddress.getAddress() != null ? internetAddress.getAddress() : fallback;
         }
+
         return addresses[0].toString();
     }
 
@@ -414,6 +433,7 @@ public class ImapMailProvider implements MailProvider {
         if (content instanceof MimeMultipart multipart) {
             return extractFromMultipart(multipart);
         }
+
         return "";
     }
 
@@ -440,6 +460,7 @@ public class ImapMailProvider implements MailProvider {
                 return html.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
             }
         }
+
         return "";
     }
 
@@ -449,6 +470,7 @@ public class ImapMailProvider implements MailProvider {
             return "";
         }
         String compact = body.replaceAll("\\s+", " ").trim();
+
         return compact.length() <= 120 ? compact : compact.substring(0, 120);
     }
 
@@ -457,6 +479,7 @@ public class ImapMailProvider implements MailProvider {
         if (date == null) {
             return Instant.now().atOffset(ZoneOffset.UTC).format(ISO);
         }
+
         return date.toInstant().atOffset(ZoneOffset.UTC).format(ISO);
     }
 
@@ -465,6 +488,7 @@ public class ImapMailProvider implements MailProvider {
         if (folder != null && folder.isOpen()) {
             try {
                 folder.close(false);
+
             } catch (MessagingException ignored) {
                 // ignore
             }
@@ -494,6 +518,7 @@ public class ImapMailProvider implements MailProvider {
                 if (store != null && store.isConnected()) {
                     store.close();
                 }
+
             } catch (MessagingException ignored) {
                 // ignore
             }

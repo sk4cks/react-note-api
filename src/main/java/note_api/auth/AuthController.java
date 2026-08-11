@@ -7,6 +7,7 @@ import note_api.auth.dto.RegisterRequest;
 import note_api.auth.dto.SocialCompleteRequest;
 import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
+import note_api.auth.dto.UserIdAvailabilityResponse;
 import note_api.auth.dto.UserResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -41,13 +42,21 @@ public class AuthController {
     public ResponseEntity<TokenResponse> login(@RequestBody LoginRequest request, HttpServletResponse response) {
         TokenResponse tokens = authService.login(request);
         refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
+
         return ResponseEntity.ok(withoutRefreshToken(tokens));
     }
 
     @PostMapping("/register")
     public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         UserResponse user = authService.register(request);
+
         return ResponseEntity.status(HttpStatus.CREATED).body(user);
+    }
+
+    /** 회원가입 전 아이디 중복 확인 */
+    @GetMapping("/check-userid")
+    public ResponseEntity<UserIdAvailabilityResponse> checkUserId(@RequestParam String userId) {
+        return ResponseEntity.ok(authService.checkUserId(userId));
     }
 
     /** SNS 최초 로그인 — SYS_USER 등록 여부 (JWT sns_* 클레임 기준) */
@@ -61,6 +70,7 @@ public class AuthController {
     public ResponseEntity<TokenResponse> completeSocial(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody SocialCompleteRequest request, HttpServletResponse response) {
         TokenResponse tokens = authService.completeSocialOnboarding(jwt, request);
         refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
+
         return ResponseEntity.ok(withoutRefreshToken(tokens));
     }
 
@@ -73,6 +83,7 @@ public class AuthController {
     public ResponseEntity<TokenResponse> token(@RequestBody TokenExchangeRequest request, HttpServletResponse response) {
         TokenResponse tokens = authService.exchangeToken(request);
         refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
+
         return ResponseEntity.ok(withoutRefreshToken(tokens));
     }
 
@@ -87,12 +98,14 @@ public class AuthController {
         if (StringUtils.hasText(tokens.refreshToken())) {
             refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
         }
+
         return ResponseEntity.ok(withoutRefreshToken(tokens));
     }
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletResponse response) {
         refreshTokenCookieService.clearRefreshToken(response);
+
         return ResponseEntity.noContent().build();
     }
 

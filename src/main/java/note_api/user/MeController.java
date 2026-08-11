@@ -19,6 +19,7 @@ public class MeController {
         result.put("userId", jwt.getSubject());
         result.put("preferredUsername", jwt.getClaimAsString("preferred_username"));
         result.put("scope", jwt.getClaimAsString("scope"));
+
         return result;
     }
 }

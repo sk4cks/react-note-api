@@ -6,6 +6,7 @@ import note_api.auth.dto.RegisterRequest;
 import note_api.auth.dto.SocialCompleteRequest;
 import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
+import note_api.auth.dto.UserIdAvailabilityResponse;
 import note_api.auth.dto.UserResponse;
 import note_api.common.exception.AuthServerException;
 import jakarta.servlet.http.HttpServletResponse;
@@ -50,7 +51,26 @@ public class AuthService {
             if (body == null) {
                 throw new IllegalStateException("Login failed: empty response from auth server");
             }
+
             return body;
+
+        } catch (HttpStatusCodeException ex) {
+            throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
+        }
+    }
+
+    /**
+     * 아이디 중복 확인 — Auth Server {@code GET /auth/check-userid}.
+     */
+    public UserIdAvailabilityResponse checkUserId(String userId) {
+        try {
+            UserIdAvailabilityResponse body = authServerClient.checkUserId(userId);
+            if (body == null) {
+                throw new IllegalStateException("Check userId failed: empty response from auth server");
+            }
+
+            return body;
+
         } catch (HttpStatusCodeException ex) {
             throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
         }
@@ -69,7 +89,9 @@ public class AuthService {
             if (body == null) {
                 throw new IllegalStateException("Register failed: empty response from auth server");
             }
+
             return body;
+
         } catch (HttpStatusCodeException ex) {
             throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
         }
@@ -96,6 +118,7 @@ public class AuthService {
         if (!status.registered()) {
             return new OnboardingStatusResponse(true, null);
         }
+
         return new OnboardingStatusResponse(false, status.userId());
     }
 
@@ -118,7 +141,9 @@ public class AuthService {
             if (body == null || !StringUtils.hasText(body.accessToken())) {
                 throw new IllegalStateException("Social register failed: empty response from auth server");
             }
+
             return body;
+
         } catch (HttpStatusCodeException ex) {
             throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
         }
@@ -150,7 +175,9 @@ public class AuthService {
             if (body == null) {
                 throw new IllegalStateException("Token exchange failed: empty response from auth server");
             }
+
             return body;
+
         } catch (HttpStatusCodeException ex) {
             throw new IllegalStateException("Token exchange failed: " + ex.getResponseBodyAsString(), ex);
         }
@@ -168,7 +195,9 @@ public class AuthService {
             if (body == null) {
                 throw new IllegalStateException("Token refresh failed: empty response from auth server");
             }
+
             return body;
+
         } catch (HttpStatusCodeException ex) {
             throw new IllegalStateException("Token refresh failed: " + ex.getResponseBodyAsString(), ex);
         }

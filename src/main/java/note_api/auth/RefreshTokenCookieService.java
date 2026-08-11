@@ -30,6 +30,7 @@ public class RefreshTokenCookieService {
                 return cookie.getValue();
             }
         }
+
         return null;
     }
 

@@ -37,6 +37,7 @@ final class GmailBatchParser {
                 parseJsonFromBatchPart(part).ifPresent(json -> {
                     try {
                         result.add(objectMapper.readTree(json));
+
                     } catch (Exception ex) {
                         throw new IllegalStateException("Failed to parse Gmail batch part", ex);
                     }
@@ -56,6 +57,7 @@ final class GmailBatchParser {
         if (matcher.find()) {
             return matcher.group(1);
         }
+
         return "";
     }
 
@@ -74,11 +76,13 @@ final class GmailBatchParser {
             }
             try {
                 result.add(objectMapper.readTree(responseBody.substring(start, end + 1)));
+
             } catch (Exception ex) {
                 throw new IllegalStateException("Failed to parse Gmail batch JSON", ex);
             }
             idx = end + 1;
         }
+
         return result;
     }
 
@@ -92,6 +96,7 @@ final class GmailBatchParser {
         if (jsonEnd < 0) {
             return Optional.empty();
         }
+
         return Optional.of(part.substring(jsonStart, jsonEnd + 1));
     }
 
@@ -123,6 +128,7 @@ final class GmailBatchParser {
                 }
             }
         }
+
         return -1;
     }
 }

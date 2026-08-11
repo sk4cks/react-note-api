@@ -181,6 +181,7 @@ class AuthControllerTest {
               // 파라미터: provider(0), state(1), codeChallenge(2), redirectUri(3), response(4)
               HttpServletResponse response = invocation.getArgument(4);
               response.sendRedirect("http://localhost:9000/auth/social/prepare/google");
+
               return null; // void 메서드
             })
         .when(authService)
