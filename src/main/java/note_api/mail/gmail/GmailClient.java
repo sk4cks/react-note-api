@@ -1,4 +1,4 @@
-package note_api.mail;
+package note_api.mail.gmail;
 
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;

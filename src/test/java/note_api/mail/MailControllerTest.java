@@ -1,5 +1,8 @@
 package note_api.mail;
 
+import note_api.common.exception.ApiException;
+import note_api.common.exception.ErrorCode;
+import note_api.common.exception.GlobalExceptionHandler;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
@@ -44,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * jwt.getSubject()가 principal로 MailService에 전달됨 (Gmail 토큰 조회 키).
  */
 @WebMvcTest(controllers = MailController.class)
-@Import({SecurityConfig.class, MailExceptionHandler.class})
+@Import({SecurityConfig.class, GlobalExceptionHandler.class})
 @EnableConfigurationProperties(CorsProperties.class)
 @TestPropertySource(properties = "app.cors.allowed-origins=http://localhost:8080")
 class MailControllerTest {
@@ -96,12 +99,12 @@ class MailControllerTest {
 
   /**
    * Google 계정/Gmail scope 미연동 시 MailService가 예외 throw.
-   * MailExceptionHandler가 403 + code JSON으로 변환하는지 검증.
+   * GlobalExceptionHandler가 403 + code JSON으로 변환하는지 검증.
    */
   @Test
   void listMessages_returnsForbidden_whenGoogleNotLinked() throws Exception {
     when(mailService.listMessages(any(), any(), any()))
-        .thenThrow(new MailGoogleNotLinkedException());
+        .thenThrow(new ApiException(ErrorCode.MAIL_GOOGLE_NOT_LINKED));
 
     mockMvc
         .perform(get("/api/mail/messages").with(authenticatedJwt()))

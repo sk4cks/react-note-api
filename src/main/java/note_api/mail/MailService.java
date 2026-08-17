@@ -1,5 +1,7 @@
 package note_api.mail;
 
+import note_api.mail.gmail.GmailMailProvider;
+import note_api.mail.imap.ImapMailProvider;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;

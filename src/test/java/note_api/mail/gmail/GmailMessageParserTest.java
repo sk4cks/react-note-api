@@ -1,4 +1,4 @@
-package note_api.mail;
+package note_api.mail.gmail;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import note_api.mail.dto.MailMessageDetailDto;

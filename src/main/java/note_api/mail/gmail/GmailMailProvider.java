@@ -1,9 +1,10 @@
-package note_api.mail;
+package note_api.mail.gmail;
 
 import note_api.auth.AuthServerClient;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
+import note_api.mail.MailProvider;
 import note_api.mail.dto.SendMailRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

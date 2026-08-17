@@ -3,8 +3,8 @@ package note_api.auth;
 import note_api.auth.dto.LoginRequest;
 import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
-import note_api.mail.MailGoogleNotLinkedException;
-import note_api.mail.MailMailboxNotFoundException;
+import note_api.common.exception.ApiException;
+import note_api.common.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -250,8 +250,10 @@ class AuthServerClientTest {
         .andRespond(withStatus(org.springframework.http.HttpStatus.NOT_FOUND));
 
     assertThatThrownBy(() -> authServerClient.fetchGoogleAccessToken("sk4cks@gmail.com"))
-        .isInstanceOf(MailGoogleNotLinkedException.class)
-        .hasMessageContaining("Google login with Gmail scope is required");
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("Google login with Gmail scope is required")
+        .extracting(ex -> ((ApiException) ex).getErrorCode())
+        .isEqualTo(ErrorCode.MAIL_GOOGLE_NOT_LINKED);
   }
 
   @Test
@@ -289,7 +291,9 @@ class AuthServerClientTest {
         .andRespond(withStatus(org.springframework.http.HttpStatus.NOT_FOUND));
 
     assertThatThrownBy(() -> authServerClient.fetchMailboxCredentials("missing"))
-        .isInstanceOf(MailMailboxNotFoundException.class)
-        .hasMessageContaining("missing");
+        .isInstanceOf(ApiException.class)
+        .hasMessageContaining("missing")
+        .extracting(ex -> ((ApiException) ex).getErrorCode())
+        .isEqualTo(ErrorCode.MAIL_MAILBOX_NOT_FOUND);
   }
 }

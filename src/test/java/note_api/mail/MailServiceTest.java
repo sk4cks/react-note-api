@@ -1,6 +1,9 @@
 package note_api.mail;
 
 import note_api.auth.AuthServerClient;
+import note_api.mail.gmail.GmailClient;
+import note_api.mail.gmail.GmailMailProvider;
+import note_api.mail.imap.ImapMailProvider;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
@@ -50,14 +53,14 @@ class MailServiceTest {
                     "msg-1", "inbox", "Alice", "a@x.com", "Hi", "preview", "date", true)),
             "next-page");
     when(authServerClient.fetchGoogleAccessToken(PRINCIPAL)).thenReturn(GOOGLE_TOKEN);
-    when(gmailClient.listMessages(GOOGLE_TOKEN, "inbox", GmailApiConstants.DEFAULT_LIST_MAX_RESULTS, null))
+    when(gmailClient.listMessages(GOOGLE_TOKEN, "inbox", 20, null))
         .thenReturn(expected);
 
     MailMessageListDto result = mailService.listMessages(PRINCIPAL, "inbox", null);
 
     assertThat(result).isEqualTo(expected);
     verify(authServerClient).fetchGoogleAccessToken(PRINCIPAL);
-    verify(gmailClient).listMessages(GOOGLE_TOKEN, "inbox", GmailApiConstants.DEFAULT_LIST_MAX_RESULTS, null);
+    verify(gmailClient).listMessages(GOOGLE_TOKEN, "inbox", 20, null);
   }
 
   @Test

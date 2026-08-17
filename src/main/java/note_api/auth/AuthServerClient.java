@@ -8,8 +8,8 @@ import note_api.auth.dto.TokenExchangeRequest;
 import note_api.auth.dto.TokenResponse;
 import note_api.auth.dto.UserIdAvailabilityResponse;
 import note_api.auth.dto.UserResponse;
-import note_api.mail.MailGoogleNotLinkedException;
-import note_api.mail.MailMailboxNotFoundException;
+import note_api.common.exception.ApiException;
+import note_api.common.exception.ErrorCode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -217,7 +217,7 @@ public class AuthServerClient {
     /**
      * Google Gmail API용 access token 조회 — {@code GET /auth/google/access-token} (internal).
      * Auth Server oauth2Login 시 저장해 둔 AuthorizedClient 를 principal 기준으로 조회·갱신.
-     * 404 이면 Google/Gmail 미연동 → {@link MailGoogleNotLinkedException}.
+     * 404 이면 Google/Gmail 미연동 → {@link ApiException}({@link ErrorCode#MAIL_GOOGLE_NOT_LINKED}).
      */
     public String fetchGoogleAccessToken(String principal) {
         String url = UriComponentsBuilder
@@ -243,13 +243,13 @@ public class AuthServerClient {
             return accessToken;
 
         } catch (HttpClientErrorException.NotFound ex) {
-            throw new MailGoogleNotLinkedException();
+            throw new ApiException(ErrorCode.MAIL_GOOGLE_NOT_LINKED);
         }
     }
 
     /**
      * Mailcow IMAP/SMTP 자격 조회 — {@code GET /auth/users/{userId}/mailbox} (internal).
-     * 404 이면 메일함 비밀번호 미저장 또는 사용자 없음 → {@link MailMailboxNotFoundException}.
+     * 404 이면 메일함 비밀번호 미저장 또는 사용자 없음 → {@link ApiException}({@link ErrorCode#MAIL_MAILBOX_NOT_FOUND}).
      */
     public MailboxCredentialsResponse fetchMailboxCredentials(String userId) {
         String url = authServerBaseUrl + "/auth/users/" + userId + "/mailbox";
@@ -271,7 +271,7 @@ public class AuthServerClient {
             return body;
 
         } catch (HttpClientErrorException.NotFound ex) {
-            throw new MailMailboxNotFoundException(userId);
+            throw new ApiException(ErrorCode.MAIL_MAILBOX_NOT_FOUND, "Mailbox credentials not found for user: " + userId);
         }
     }
 }

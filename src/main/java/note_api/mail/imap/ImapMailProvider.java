@@ -1,4 +1,4 @@
-package note_api.mail;
+package note_api.mail.imap;
 
 import note_api.auth.AuthServerClient;
 import note_api.auth.dto.MailboxCredentialsResponse;
@@ -6,6 +6,7 @@ import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailMessageSummaryDto;
+import note_api.mail.MailProvider;
 import note_api.mail.dto.SendMailRequest;
 import jakarta.mail.Address;
 import jakarta.mail.Flags;

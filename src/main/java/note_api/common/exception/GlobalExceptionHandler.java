@@ -26,6 +26,12 @@ public class GlobalExceptionHandler {
         this.objectMapper = objectMapper;
     }
 
+    @ExceptionHandler(ApiException.class)
+    public ResponseEntity<ErrorResponse> handleApiException(ApiException ex) {
+        return ResponseEntity.status(ex.getErrorCode().getStatus())
+                .body(ErrorResponse.from(ex));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ValidationErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new LinkedHashMap<>();
