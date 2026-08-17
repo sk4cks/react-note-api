@@ -1,9 +1,15 @@
 package note_api.mail.gmail;
 
+import note_api.common.exception.ApiException;
+import note_api.common.exception.ErrorCode;
+import note_api.mail.MailMimeFactory;
+import note_api.mail.dto.MailAttachmentContent;
+import note_api.mail.dto.MailAttachmentDto;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailMessageSummaryDto;
+import note_api.mail.dto.SendMailRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpEntity;
@@ -114,6 +120,25 @@ public class GmailClient {
         return messageParser.toDetail(body);
     }
 
+    /**
+     * 첨부파일 본문을 받는다. 파일명/타입은 message payload에서, 내용은 attachments API에서 가져온다.
+     */
+    public MailAttachmentContent getAttachment(String accessToken, String messageId, String attachmentId) {
+        MailMessageDetailDto detail = getMessage(accessToken, messageId);
+        MailAttachmentDto attachment = detail.attachments().stream()
+                .filter(candidate -> candidate.id().equals(attachmentId))
+                .findFirst()
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.MAIL_ATTACHMENT_NOT_FOUND, "Attachment not found: " + attachmentId));
+
+        String url = GmailApiConstants.USERS_ME_BASE
+                + "/messages/" + messageId + "/attachments/" + attachmentId;
+        JsonNode body = exchange(accessToken, url, HttpMethod.GET, null);
+        byte[] content = Base64.getUrlDecoder().decode(body.path("data").asText(""));
+
+        return new MailAttachmentContent(attachment.filename(), attachment.contentType(), content);
+    }
+
     public void markThreadAsRead(String accessToken, String threadId) {
         String url = GmailApiConstants.USERS_ME_BASE + "/threads/" + threadId + "/modify";
         JsonNode payload = objectMapper.createObjectNode()
@@ -121,9 +146,9 @@ public class GmailClient {
         exchange(accessToken, url, HttpMethod.POST, payload);
     }
 
-    public void sendMessage(String accessToken, String to, String subject, String textBody) {
-        String raw = buildRawMime(to, subject, textBody);
-        String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
+    public void sendMessage(String accessToken, SendMailRequest request) {
+        byte[] mimeBytes = MailMimeFactory.toRfc822Bytes(null, request);
+        String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(mimeBytes);
 
         String url = GmailApiConstants.USERS_ME_BASE + "/messages/send";
         JsonNode payload = objectMapper.createObjectNode().put("raw", encoded);
@@ -318,26 +343,4 @@ public class GmailClient {
         };
     }
 
-    private static String buildRawMime(String to, String subject, String body) {
-        return "MIME-Version: 1.0\r\n"
-                + "To: " + to + "\r\n"
-                + "Subject: " + encodeMimeHeader(subject) + "\r\n"
-                + "Content-Type: " + GmailApiConstants.MIME_TEXT_PLAIN + "; charset=UTF-8\r\n"
-                + "Content-Transfer-Encoding: base64\r\n"
-                + "\r\n"
-                + Base64.getEncoder().encodeToString(body.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static String encodeMimeHeader(String value) {
-        if (!StringUtils.hasText(value)) {
-            return "";
-        }
-        if (value.chars().allMatch(ch -> ch < 128)) {
-            return value;
-        }
-
-        return "=?UTF-8?B?"
-                + Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8))
-                + "?=";
-    }
 }

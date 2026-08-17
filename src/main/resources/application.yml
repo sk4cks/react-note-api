@@ -1,5 +1,8 @@
 server:
   port: 8082
+  tomcat:
+    max-http-form-post-size: 20MB
+    max-swallow-size: 20MB
 
 auth-server:
   base-url: http://localhost:9000/authorization-api

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
+import note_api.mail.dto.SendMailRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -195,11 +196,13 @@ class GmailClientTest {
                     assertThat(mime).contains("MIME-Version: 1.0");
                     assertThat(mime).contains("To: recipient@example.com");
                     assertThat(mime).contains("Subject: Test subject");
-                    assertThat(mime).contains("Content-Type: text/plain; charset=UTF-8");
+                    assertThat(mime).contains("text/html");
+                    assertThat(mime).contains("Hello body");
                 })
                 .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
-        gmailClient.sendMessage(ACCESS_TOKEN, "recipient@example.com", "Test subject", "Hello body");
+        gmailClient.sendMessage(
+                ACCESS_TOKEN, new SendMailRequest("recipient@example.com", "Test subject", "Hello body"));
 
         server.verify();
     }

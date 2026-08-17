@@ -1,10 +1,11 @@
 package note_api.mail.gmail;
 
 import note_api.auth.AuthServerClient;
+import note_api.mail.MailProvider;
+import note_api.mail.dto.MailAttachmentContent;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
-import note_api.mail.MailProvider;
 import note_api.mail.dto.SendMailRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,13 +14,13 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Gmail API 기반 {@link MailProvider}.
+ * Gmail API 기반 {@link note_api.mail.MailProvider}.
  * <p>
- * 기존 {@link MailService}가 직접 하던 Gmail 경로를 분리한 구현체.
- * {@code app.mail.provider=gmail} (k8s 기본)일 때 {@link MailService}가 이 빈을 사용한다.
+ * 기존 {@link note_api.mail.MailService}가 직접 하던 Gmail 경로를 분리한 구현체.
+ * {@code app.mail.provider=gmail} (k8s 기본)일 때 {@link note_api.mail.MailService}가 이 빈을 사용한다.
  * <p>
  * 공통 흐름: JWT {@code sub}(= userId) → Auth에서 Google access token → {@link GmailClient}.
- * Google 미연동(404)이면 {@link MailGoogleNotLinkedException} → 프론트 FORBIDDEN.
+ * Google 미연동(404)이면 {@link note_api.common.exception.ApiException}({@code MAIL_GOOGLE_NOT_LINKED}) → 프론트 FORBIDDEN.
  */
 @Slf4j
 @Component
@@ -56,7 +57,7 @@ public class GmailMailProvider implements MailProvider {
      * @return 상세 DTO (읽음 처리 반영 여부 포함)
      */
     @Override
-    public MailMessageDetailDto getMessage(String userId, String messageId) {
+    public MailMessageDetailDto getMessage(String userId, String folder, String messageId) {
         String googleToken = authServerClient.fetchGoogleAccessToken(userId);
         MailMessageDetailDto detail = gmailClient.getMessage(googleToken, messageId);
         if (!detail.unread()) {
@@ -71,31 +72,32 @@ public class GmailMailProvider implements MailProvider {
             return detail;
         }
 
-        return new MailMessageDetailDto(
-                detail.id(),
-                detail.threadId(),
-                detail.folder(),
-                detail.from(),
-                detail.fromEmail(),
-                detail.to(),
-                detail.subject(),
-                detail.preview(),
-                detail.body(),
-                detail.bodyContentType(),
-                detail.date(),
-                false);
+        return detail.asRead();
+    }
+
+    /**
+     * 첨부파일을 받는다. Gmail message id는 폴더와 무관해 {@code folder}는 쓰지 않는다.
+     *
+     * @param attachmentId Gmail attachmentId
+     */
+    @Override
+    public MailAttachmentContent getAttachment(
+            String userId, String folder, String messageId, String attachmentId) {
+        String googleToken = authServerClient.fetchGoogleAccessToken(userId);
+
+        return gmailClient.getAttachment(googleToken, messageId, attachmentId);
     }
 
     /**
      * 메일을 발송한다 (Gmail {@code users.messages.send}, MIME raw).
      *
      * @param userId  JWT subject
-     * @param request to / subject / body
+     * @param request to / subject / body / attachments
      */
     @Override
     public void sendMessage(String userId, SendMailRequest request) {
         String googleToken = authServerClient.fetchGoogleAccessToken(userId);
-        gmailClient.sendMessage(googleToken, request.to(), request.subject(), request.body());
+        gmailClient.sendMessage(googleToken, request);
     }
 
     /**

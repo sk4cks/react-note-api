@@ -1,13 +1,15 @@
 package note_api.mail;
 
-import note_api.common.exception.ApiException;
-import note_api.common.exception.ErrorCode;
-import note_api.common.exception.GlobalExceptionHandler;
+import note_api.mail.dto.MailAttachmentContent;
+import note_api.mail.dto.MailAttachmentDto;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailMessageSummaryDto;
 import note_api.mail.dto.SendMailRequest;
+import note_api.common.exception.ApiException;
+import note_api.common.exception.ErrorCode;
+import note_api.common.exception.GlobalExceptionHandler;
 import note_api.config.CorsProperties;
 import note_api.config.SecurityConfig;
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.util.List;
 import java.util.Objects;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -31,6 +34,8 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -112,6 +117,17 @@ class MailControllerTest {
         .andExpect(jsonPath("$.code").value("MAIL_GOOGLE_NOT_LINKED"));
   }
 
+  @Test
+  void getMessage_returnsNotFound_whenMessageMissing() throws Exception {
+    when(mailService.getMessage(PRINCIPAL, "inbox", "missing"))
+        .thenThrow(new ApiException(ErrorCode.MAIL_MESSAGE_NOT_FOUND, "Message not found: missing"));
+
+    mockMvc
+        .perform(get("/api/mail/messages/missing").with(authenticatedJwt()))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("MAIL_MESSAGE_NOT_FOUND"));
+  }
+
   /** 메일 상세 — path variable id를 MailService에 그대로 전달 */
   @Test
   void getMessage_returnsDetail_whenAuthenticated() throws Exception {
@@ -128,8 +144,9 @@ class MailControllerTest {
             "<p>Body</p>",
             "text/html",
             "2026-06-23T10:00:00Z",
-            false);
-    when(mailService.getMessage(PRINCIPAL, "msg-1")).thenReturn(detail);
+            false,
+            List.of(new MailAttachmentDto("1", "report.pdf", "application/pdf", 1024)));
+    when(mailService.getMessage(PRINCIPAL, "inbox", "msg-1")).thenReturn(detail);
 
     mockMvc
         .perform(get("/api/mail/messages/msg-1").with(authenticatedJwt()))
@@ -137,7 +154,23 @@ class MailControllerTest {
         .andExpect(jsonPath("$.id").value("msg-1"))
         .andExpect(jsonPath("$.threadId").value("thread-1"))
         .andExpect(jsonPath("$.body").value("<p>Body</p>"))
-        .andExpect(jsonPath("$.unread").value(false));
+        .andExpect(jsonPath("$.unread").value(false))
+        .andExpect(jsonPath("$.attachments[0].id").value("1"))
+        .andExpect(jsonPath("$.attachments[0].filename").value("report.pdf"));
+  }
+
+  /** 첨부 다운로드 — 파일명은 RFC 5987로 인코딩해 Content-Disposition에 실린다 */
+  @Test
+  void getAttachment_returnsBytesWithFilename() throws Exception {
+    when(mailService.getAttachment(PRINCIPAL, "sent", "msg-1", "1"))
+        .thenReturn(new MailAttachmentContent("보고서.pdf", "application/pdf", new byte[] {1, 2, 3}));
+
+    mockMvc
+        .perform(get("/api/mail/messages/msg-1/attachments/1?folder=sent").with(authenticatedJwt()))
+        .andExpect(status().isOk())
+        .andExpect(content().contentType("application/pdf"))
+        .andExpect(header().string("Content-Disposition", containsString("UTF-8''")))
+        .andExpect(content().bytes(new byte[] {1, 2, 3}));
   }
 
   /** 폴더별 메일 개수 (inbox badge 등) */

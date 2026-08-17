@@ -2,12 +2,16 @@ package note_api.mail.imap;
 
 import note_api.auth.AuthServerClient;
 import note_api.auth.dto.MailboxCredentialsResponse;
+import note_api.mail.MailMimeFactory;
+import note_api.mail.MailProvider;
+import note_api.mail.dto.MailAttachmentContent;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailMessageSummaryDto;
-import note_api.mail.MailProvider;
 import note_api.mail.dto.SendMailRequest;
+import note_api.common.exception.ApiException;
+import note_api.common.exception.ErrorCode;
 import jakarta.mail.Address;
 import jakarta.mail.Flags;
 import jakarta.mail.Folder;
@@ -35,10 +39,10 @@ import java.util.List;
 import java.util.Properties;
 
 /**
- * Mailcow IMAP/SMTP 기반 {@link MailProvider}.
+ * Mailcow IMAP/SMTP 기반 {@link note_api.mail.MailProvider}.
  * <p>
  * 웹메일 2단계: 자체 {@code userId@도메인} 메일함. BFF가 Gmail API 대신 Jakarta Mail로 접속한다.
- * {@code app.mail.provider=imap} (로컬 기본)일 때 {@link MailService}가 이 빈을 사용한다.
+ * {@code app.mail.provider=imap} (로컬 기본)일 때 {@link note_api.mail.MailService}가 이 빈을 사용한다.
  * <p>
  * 자격은 Auth 내부 API {@code GET /auth/users/{userId}/mailbox} 로만 조회 (BFF→DB 직접 금지).
  * IMAPS 993 / SMTP STARTTLS 587. 로컬 self-signed·IP 접속은 SSL hostname 검증 비활성.
@@ -106,55 +110,40 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * UID로 INBOX 메시지 상세를 조회한다. unread면 {@code SEEN} 플래그를 켠다.
+     * UID로 메시지 상세를 조회한다. unread면 {@code SEEN} 플래그를 켠다.
      * <p>
      * mark-as-read 실패 시에도 본문은 반환 (Gmail 경로와 동일).
      * threadId는 IMAP 스레드가 약해 MVP에서 UID와 같은 값.
      *
      * @param userId    JWT subject
+     * @param folder    SPA 폴더 id — UID는 폴더별로 다르므로 반드시 목록과 같은 폴더여야 한다
      * @param messageId IMAP UID 문자열
      * @return 상세 DTO
      */
     @Override
-    public MailMessageDetailDto getMessage(String userId, String messageId) {
+    public MailMessageDetailDto getMessage(String userId, String folder, String messageId) {
         MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
-        long uid = Long.parseLong(messageId);
+        long uid = parseUid(messageId);
         try (ImapSession session = openImap(creds)) {
-            Folder imapFolder = openFolder(session.store(), "inbox", Folder.READ_WRITE);
+            Folder imapFolder = openFolder(session.store(), folder, Folder.READ_WRITE);
             try {
                 UIDFolder uidFolder = (UIDFolder) imapFolder;
-                Message message = uidFolder.getMessageByUID(uid);
-                if (message == null) {
-                    throw new IllegalArgumentException("Message not found: " + messageId);
-                }
+                Message message = requireMessage(uidFolder, uid, messageId);
                 boolean unread = !message.isSet(Flags.Flag.SEEN);
-                MailMessageDetailDto detail = toDetail(message, uidFolder, "inbox");
-                if (unread) {
-                    try {
-                        message.setFlag(Flags.Flag.SEEN, true);
+                MailMessageDetailDto detail = toDetail(message, uidFolder, normalizeFolder(folder));
+                if (!unread) {
+                    return detail;
+                }
+                try {
+                    message.setFlag(Flags.Flag.SEEN, true);
 
-                    } catch (MessagingException ex) {
-                        log.warn("Failed to mark IMAP message as read: {}", messageId, ex);
+                } catch (MessagingException ex) {
+                    log.warn("Failed to mark IMAP message as read: {}", messageId, ex);
 
-                        return detail;
-                    }
-
-                    return new MailMessageDetailDto(
-                            detail.id(),
-                            detail.threadId(),
-                            detail.folder(),
-                            detail.from(),
-                            detail.fromEmail(),
-                            detail.to(),
-                            detail.subject(),
-                            detail.preview(),
-                            detail.body(),
-                            detail.bodyContentType(),
-                            detail.date(),
-                            false);
+                    return detail;
                 }
 
-                return detail;
+                return detail.asRead();
             } finally {
                 closeQuietly(imapFolder);
             }
@@ -165,22 +154,65 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
+     * 첨부파일 본문을 읽는다. {@code attachmentId}는 상세 응답이 내려준 MIME part 경로.
+     *
+     * @param userId       JWT subject
+     * @param folder       SPA 폴더 id
+     * @param messageId    IMAP UID 문자열
+     * @param attachmentId MIME part 인덱스 경로 (예: {@code 1}, {@code 0.2})
+     */
+    @Override
+    public MailAttachmentContent getAttachment(
+            String userId, String folder, String messageId, String attachmentId) {
+        MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
+        long uid = parseUid(messageId);
+        try (ImapSession session = openImap(creds)) {
+            Folder imapFolder = openFolder(session.store(), folder, Folder.READ_ONLY);
+            try {
+                UIDFolder uidFolder = (UIDFolder) imapFolder;
+
+                return ImapMimeReader.readAttachment(requireMessage(uidFolder, uid, messageId), attachmentId);
+            } finally {
+                closeQuietly(imapFolder);
+            }
+
+        } catch (MessagingException | IOException ex) {
+            throw new IllegalStateException("IMAP attachment fetch failed for user " + userId, ex);
+        }
+    }
+
+    private static Message requireMessage(UIDFolder uidFolder, long uid, String messageId)
+            throws MessagingException {
+        Message message = uidFolder.getMessageByUID(uid);
+        if (message == null) {
+            throw new ApiException(ErrorCode.MAIL_MESSAGE_NOT_FOUND, "Message not found: " + messageId);
+        }
+
+        return message;
+    }
+
+    private static long parseUid(String messageId) {
+        try {
+            return Long.parseLong(messageId);
+
+        } catch (NumberFormatException ex) {
+            throw new ApiException(ErrorCode.MAIL_MESSAGE_NOT_FOUND, "Message not found: " + messageId);
+        }
+    }
+
+    /**
      * SMTP STARTTLS로 메일을 발송한 뒤, IMAP Sent 폴더에 사본을 APPEND한다.
      * (Mailcow는 SMTP만으로 Sent에 자동 저장하지 않음 — 클라이언트가 저장해야 함)
      *
      * @param userId  JWT subject
-     * @param request to / subject / body
+     * @param request to / subject / body / attachments
      */
     @Override
     public void sendMessage(String userId, SendMailRequest request) {
         MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
         try {
             Session smtpSession = createSmtpSession(creds);
-            MimeMessage message = new MimeMessage(smtpSession);
-            message.setFrom(new InternetAddress(creds.mailAddress()));
-            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(request.to(), false));
-            message.setSubject(request.subject() != null ? request.subject() : "", "UTF-8");
-            message.setText(request.body() != null ? request.body() : "", "UTF-8");
+            MimeMessage message = MailMimeFactory.create(smtpSession, creds.mailAddress(), request);
             message.setSentDate(new Date());
             Transport.send(message);
             appendToSent(creds, message);
@@ -362,7 +394,7 @@ public class ImapMailProvider implements MailProvider {
 
     /**
      * IMAP Message → 상세 DTO.
-     * threadId는 MVP에서 UID와 동일. bodyContentType은 text/plain 고정.
+     * threadId는 MVP에서 UID와 동일. 본문은 HTML 우선, 인라인 이미지는 data URL로 치환된다.
      */
     private static MailMessageDetailDto toDetail(Message message, UIDFolder uidFolder, String folder)
             throws MessagingException, IOException {
@@ -373,8 +405,8 @@ public class ImapMailProvider implements MailProvider {
         Address[] toAddrs = message.getRecipients(Message.RecipientType.TO);
         String to = extractEmail(toAddrs);
         String subject = message.getSubject() != null ? message.getSubject() : "(no subject)";
-        String body = extractText(message);
         boolean unread = !message.isSet(Flags.Flag.SEEN);
+        ImapMimeReader.Content content = ImapMimeReader.read(message);
 
         return new MailMessageDetailDto(
                 String.valueOf(uid),
@@ -384,11 +416,12 @@ public class ImapMailProvider implements MailProvider {
                 fromEmail,
                 to,
                 subject,
-                previewOf(body),
-                body,
-                "text/plain",
+                previewOf(extractText(message)),
+                content.body(),
+                content.bodyContentType(),
                 formatDate(message.getSentDate()),
-                unread);
+                unread,
+                content.attachments());
     }
 
     /** From/To 주소 배열에서 첫 번째 이메일 주소 문자열을 꺼낸다. */

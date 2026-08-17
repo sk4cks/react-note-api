@@ -1,13 +1,16 @@
 package note_api.mail.gmail;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import note_api.mail.dto.MailAttachmentDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageSummaryDto;
 import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.regex.Matcher;
 
 /**
@@ -50,6 +53,8 @@ final class GmailMessageParser {
         String folder = resolveFolder(body);
         boolean unread = hasLabel(body, GmailApiConstants.LABEL_UNREAD);
         BodyContent bodyContent = extractBody(body.path("payload"));
+        List<MailAttachmentDto> attachments = new ArrayList<>();
+        collectAttachments(body.path("payload"), attachments);
 
         return new MailMessageDetailDto(
                 id,
@@ -63,7 +68,26 @@ final class GmailMessageParser {
                 bodyContent.body(),
                 bodyContent.contentType(),
                 formatDate(body.path("internalDate").asText(null), headers.date()),
-                unread);
+                unread,
+                attachments);
+    }
+
+    /** payload tree에서 filename + attachmentId를 가진 part를 첨부로 모은다. */
+    private static void collectAttachments(JsonNode part, List<MailAttachmentDto> out) {
+        String filename = part.path("filename").asText("");
+        String attachmentId = part.path("body").path("attachmentId").asText("");
+        if (StringUtils.hasText(filename) && StringUtils.hasText(attachmentId)) {
+            out.add(new MailAttachmentDto(
+                    attachmentId,
+                    filename,
+                    part.path("mimeType").asText("application/octet-stream"),
+                    part.path("body").path("size").asLong(0)));
+
+            return;
+        }
+        for (JsonNode child : part.path("parts")) {
+            collectAttachments(child, out);
+        }
     }
 
     /** thread 내부에서 internalDate가 가장 큰 message를 최신 message로 간주 */

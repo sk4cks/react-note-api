@@ -1,14 +1,14 @@
 package note_api.mail;
 
 import note_api.auth.AuthServerClient;
-import note_api.mail.gmail.GmailClient;
-import note_api.mail.gmail.GmailMailProvider;
-import note_api.mail.imap.ImapMailProvider;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailMessageSummaryDto;
 import note_api.mail.dto.SendMailRequest;
+import note_api.mail.gmail.GmailClient;
+import note_api.mail.gmail.GmailMailProvider;
+import note_api.mail.imap.ImapMailProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -69,7 +69,7 @@ class MailServiceTest {
     when(authServerClient.fetchGoogleAccessToken(PRINCIPAL)).thenReturn(GOOGLE_TOKEN);
     when(gmailClient.getMessage(GOOGLE_TOKEN, "msg-1")).thenReturn(readDetail);
 
-    MailMessageDetailDto result = mailService.getMessage(PRINCIPAL, "msg-1");
+    MailMessageDetailDto result = mailService.getMessage(PRINCIPAL, "inbox", "msg-1");
 
     assertThat(result).isEqualTo(readDetail);
     verify(gmailClient).getMessage(GOOGLE_TOKEN, "msg-1");
@@ -82,7 +82,7 @@ class MailServiceTest {
     when(authServerClient.fetchGoogleAccessToken(PRINCIPAL)).thenReturn(GOOGLE_TOKEN);
     when(gmailClient.getMessage(GOOGLE_TOKEN, "msg-1")).thenReturn(unreadDetail);
 
-    MailMessageDetailDto result = mailService.getMessage(PRINCIPAL, "msg-1");
+    MailMessageDetailDto result = mailService.getMessage(PRINCIPAL, "inbox", "msg-1");
 
     verify(gmailClient).markThreadAsRead(GOOGLE_TOKEN, "thread-1");
     assertThat(result.unread()).isFalse();
@@ -99,7 +99,7 @@ class MailServiceTest {
         .when(gmailClient)
         .markThreadAsRead(GOOGLE_TOKEN, "thread-1");
 
-    MailMessageDetailDto result = mailService.getMessage(PRINCIPAL, "msg-1");
+    MailMessageDetailDto result = mailService.getMessage(PRINCIPAL, "inbox", "msg-1");
 
     assertThat(result).isEqualTo(unreadDetail);
     assertThat(result.unread()).isTrue();
@@ -112,7 +112,7 @@ class MailServiceTest {
 
     mailService.sendMessage(PRINCIPAL, request);
 
-    verify(gmailClient).sendMessage(GOOGLE_TOKEN, "to@example.com", "Subject", "Body");
+    verify(gmailClient).sendMessage(GOOGLE_TOKEN, request);
   }
 
   @Test
@@ -151,6 +151,7 @@ class MailServiceTest {
         "Body",
         "text/plain",
         "2026-06-23T10:00:00Z",
-        unread);
+        unread,
+        List.of());
   }
 }
