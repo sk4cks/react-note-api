@@ -23,7 +23,6 @@ import jakarta.mail.Transport;
 import jakarta.mail.UIDFolder;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
-import jakarta.mail.internet.MimeMultipart;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -122,35 +121,22 @@ public class ImapMailProvider implements MailProvider {
      */
     @Override
     public MailMessageDetailDto getMessage(String userId, String folder, String messageId) {
-        MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
-        long uid = parseUid(messageId);
-        try (ImapSession session = openImap(creds)) {
-            Folder imapFolder = openFolder(session.store(), folder, Folder.READ_WRITE);
+        return withImapMessage(userId, folder, messageId, Folder.READ_WRITE, "get", (message, uidFolder) -> {
+            MailMessageDetailDto detail = toDetail(message, uidFolder, normalizeFolder(folder));
+            if (!detail.unread()) {
+                return detail;
+            }
             try {
-                UIDFolder uidFolder = (UIDFolder) imapFolder;
-                Message message = requireMessage(uidFolder, uid, messageId);
-                boolean unread = !message.isSet(Flags.Flag.SEEN);
-                MailMessageDetailDto detail = toDetail(message, uidFolder, normalizeFolder(folder));
-                if (!unread) {
-                    return detail;
-                }
-                try {
-                    message.setFlag(Flags.Flag.SEEN, true);
+                message.setFlag(Flags.Flag.SEEN, true);
 
-                } catch (MessagingException ex) {
-                    log.warn("Failed to mark IMAP message as read: {}", messageId, ex);
+            } catch (MessagingException ex) {
+                log.warn("Failed to mark IMAP message as read: {}", messageId, ex);
 
-                    return detail;
-                }
-
-                return detail.asRead();
-            } finally {
-                closeQuietly(imapFolder);
+                return detail;
             }
 
-        } catch (MessagingException | IOException ex) {
-            throw new IllegalStateException("IMAP get failed for user " + userId, ex);
-        }
+            return detail.asRead();
+        });
     }
 
     /**
@@ -164,20 +150,37 @@ public class ImapMailProvider implements MailProvider {
     @Override
     public MailAttachmentContent getAttachment(
             String userId, String folder, String messageId, String attachmentId) {
+        return withImapMessage(
+                userId,
+                folder,
+                messageId,
+                Folder.READ_ONLY,
+                "attachment fetch",
+                (message, uidFolder) -> ImapMimeReader.readAttachment(message, attachmentId));
+    }
+
+    @FunctionalInterface
+    private interface ImapMessageWork<T> {
+        T apply(Message message, UIDFolder uidFolder) throws MessagingException, IOException;
+    }
+
+    /** IMAP 폴더를 열고 UID로 메시지를 찾아 작업을 수행한 뒤 폴더를 닫는다. */
+    private <T> T withImapMessage(
+            String userId, String folder, String messageId, int mode, String action, ImapMessageWork<T> work) {
         MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
         long uid = parseUid(messageId);
         try (ImapSession session = openImap(creds)) {
-            Folder imapFolder = openFolder(session.store(), folder, Folder.READ_ONLY);
+            Folder imapFolder = openFolder(session.store(), folder, mode);
             try {
                 UIDFolder uidFolder = (UIDFolder) imapFolder;
 
-                return ImapMimeReader.readAttachment(requireMessage(uidFolder, uid, messageId), attachmentId);
+                return work.apply(requireMessage(uidFolder, uid, messageId), uidFolder);
             } finally {
                 closeQuietly(imapFolder);
             }
 
         } catch (MessagingException | IOException ex) {
-            throw new IllegalStateException("IMAP attachment fetch failed for user " + userId, ex);
+            throw new IllegalStateException("IMAP " + action + " failed for user " + userId, ex);
         }
     }
 
@@ -185,7 +188,7 @@ public class ImapMailProvider implements MailProvider {
             throws MessagingException {
         Message message = uidFolder.getMessageByUID(uid);
         if (message == null) {
-            throw new ApiException(ErrorCode.MAIL_MESSAGE_NOT_FOUND, "Message not found: " + messageId);
+            throw new ApiException(ErrorCode.MAIL_MESSAGE_NOT_FOUND, messageId);
         }
 
         return message;
@@ -196,7 +199,7 @@ public class ImapMailProvider implements MailProvider {
             return Long.parseLong(messageId);
 
         } catch (NumberFormatException ex) {
-            throw new ApiException(ErrorCode.MAIL_MESSAGE_NOT_FOUND, "Message not found: " + messageId);
+            throw new ApiException(ErrorCode.MAIL_MESSAGE_NOT_FOUND, messageId);
         }
     }
 
@@ -228,11 +231,7 @@ public class ImapMailProvider implements MailProvider {
     private void appendToSent(MailboxCredentialsResponse creds, MimeMessage message)
             throws MessagingException {
         try (ImapSession session = openImap(creds)) {
-            Folder sent = session.store().getFolder(toImapFolderName("sent"));
-            if (!sent.exists() && !sent.create(Folder.HOLDS_MESSAGES)) {
-                throw new MessagingException("Cannot create Sent folder");
-            }
-            sent.open(Folder.READ_WRITE);
+            Folder sent = openFolder(session.store(), "sent", Folder.READ_WRITE);
             try {
                 message.setFlag(Flags.Flag.SEEN, true);
                 sent.appendMessages(new Message[] {message});
@@ -372,24 +371,17 @@ public class ImapMailProvider implements MailProvider {
      */
     private static MailMessageSummaryDto toSummary(Message message, UIDFolder uidFolder, String folder)
             throws MessagingException, IOException {
-        long uid = uidFolder.getUID(message);
-        Address[] from = message.getFrom();
-        String fromEmail = extractEmail(from);
-        String fromName = extractPersonal(from, fromEmail);
-        String subject = message.getSubject() != null ? message.getSubject() : "(no subject)";
-        String body = extractText(message);
-        String preview = previewOf(body);
-        boolean unread = !message.isSet(Flags.Flag.SEEN);
+        Envelope envelope = envelope(message, uidFolder);
 
         return new MailMessageSummaryDto(
-                String.valueOf(uid),
+                String.valueOf(envelope.uid()),
                 folder,
-                fromName,
-                fromEmail,
-                subject,
-                preview,
-                formatDate(message.getSentDate()),
-                unread);
+                envelope.fromName(),
+                envelope.fromEmail(),
+                envelope.subject(),
+                previewOf(ImapMimeReader.previewText(message)),
+                formatDate(envelope.sentDate()),
+                envelope.unread());
     }
 
     /**
@@ -398,30 +390,40 @@ public class ImapMailProvider implements MailProvider {
      */
     private static MailMessageDetailDto toDetail(Message message, UIDFolder uidFolder, String folder)
             throws MessagingException, IOException {
-        long uid = uidFolder.getUID(message);
-        Address[] from = message.getFrom();
-        String fromEmail = extractEmail(from);
-        String fromName = extractPersonal(from, fromEmail);
-        Address[] toAddrs = message.getRecipients(Message.RecipientType.TO);
-        String to = extractEmail(toAddrs);
-        String subject = message.getSubject() != null ? message.getSubject() : "(no subject)";
-        boolean unread = !message.isSet(Flags.Flag.SEEN);
+        Envelope envelope = envelope(message, uidFolder);
         ImapMimeReader.Content content = ImapMimeReader.read(message);
 
         return new MailMessageDetailDto(
-                String.valueOf(uid),
-                String.valueOf(uid),
+                String.valueOf(envelope.uid()),
+                String.valueOf(envelope.uid()),
                 folder,
-                fromName,
-                fromEmail,
-                to,
-                subject,
-                previewOf(extractText(message)),
+                envelope.fromName(),
+                envelope.fromEmail(),
+                envelope.to(),
+                envelope.subject(),
+                previewOf(content.preview()),
                 content.body(),
                 content.bodyContentType(),
-                formatDate(message.getSentDate()),
-                unread,
+                formatDate(envelope.sentDate()),
+                envelope.unread(),
                 content.attachments());
+    }
+
+    private record Envelope(
+            long uid, String fromEmail, String fromName, String to, String subject, Date sentDate, boolean unread) {}
+
+    private static Envelope envelope(Message message, UIDFolder uidFolder) throws MessagingException {
+        Address[] from = message.getFrom();
+        String fromEmail = extractEmail(from);
+
+        return new Envelope(
+                uidFolder.getUID(message),
+                fromEmail,
+                extractPersonal(from, fromEmail),
+                extractEmail(message.getRecipients(Message.RecipientType.TO)),
+                message.getSubject() != null ? message.getSubject() : "(no subject)",
+                message.getSentDate(),
+                !message.isSet(Flags.Flag.SEEN));
     }
 
     /** From/To 주소 배열에서 첫 번째 이메일 주소 문자열을 꺼낸다. */
@@ -453,49 +455,6 @@ public class ImapMailProvider implements MailProvider {
         }
 
         return addresses[0].toString();
-    }
-
-    /**
-     * 메시지 본문 텍스트를 추출한다.
-     * 단순 String이면 그대로, multipart면 {@link #extractFromMultipart} 위임.
-     */
-    private static String extractText(Message message) throws MessagingException, IOException {
-        Object content = message.getContent();
-        if (content instanceof String text) {
-            return text;
-        }
-        if (content instanceof MimeMultipart multipart) {
-            return extractFromMultipart(multipart);
-        }
-
-        return "";
-    }
-
-    /**
-     * multipart에서 text/plain을 우선 찾고, 없으면 text/html에서 태그를 벗겨 반환한다.
-     * nested multipart도 재귀 탐색.
-     */
-    private static String extractFromMultipart(MimeMultipart multipart) throws MessagingException, IOException {
-        for (int i = 0; i < multipart.getCount(); i++) {
-            var part = multipart.getBodyPart(i);
-            if (part.isMimeType("text/plain") && part.getContent() instanceof String text) {
-                return text;
-            }
-            if (part.getContent() instanceof MimeMultipart nested) {
-                String nestedText = extractFromMultipart(nested);
-                if (StringUtils.hasText(nestedText)) {
-                    return nestedText;
-                }
-            }
-        }
-        for (int i = 0; i < multipart.getCount(); i++) {
-            var part = multipart.getBodyPart(i);
-            if (part.isMimeType("text/html") && part.getContent() instanceof String html) {
-                return html.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
-            }
-        }
-
-        return "";
     }
 
     /** 목록 preview용. 공백 압축 후 최대 120자. */

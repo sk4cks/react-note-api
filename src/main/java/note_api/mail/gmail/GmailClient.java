@@ -110,12 +110,7 @@ public class GmailClient {
     }
 
     public MailMessageDetailDto getMessage(String accessToken, String messageId) {
-        String url = UriComponentsBuilder.fromUriString(GmailApiConstants.USERS_ME_BASE + "/messages/" + messageId)
-                .queryParam("format", "full")
-                .build()
-                .toUriString();
-
-        JsonNode body = exchange(accessToken, url, HttpMethod.GET, null);
+        JsonNode body = exchange(accessToken, messageUrl(messageId), HttpMethod.GET, null);
 
         return messageParser.toDetail(body);
     }
@@ -124,12 +119,11 @@ public class GmailClient {
      * 첨부파일 본문을 받는다. 파일명/타입은 message payload에서, 내용은 attachments API에서 가져온다.
      */
     public MailAttachmentContent getAttachment(String accessToken, String messageId, String attachmentId) {
-        MailMessageDetailDto detail = getMessage(accessToken, messageId);
-        MailAttachmentDto attachment = detail.attachments().stream()
-                .filter(candidate -> candidate.id().equals(attachmentId))
-                .findFirst()
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.MAIL_ATTACHMENT_NOT_FOUND, "Attachment not found: " + attachmentId));
+        MailAttachmentDto attachment =
+                messageParser.findAttachment(exchange(accessToken, messageUrl(messageId), HttpMethod.GET, null), attachmentId);
+        if (attachment == null) {
+            throw new ApiException(ErrorCode.MAIL_ATTACHMENT_NOT_FOUND, attachmentId);
+        }
 
         String url = GmailApiConstants.USERS_ME_BASE
                 + "/messages/" + messageId + "/attachments/" + attachmentId;
@@ -202,42 +196,12 @@ public class GmailClient {
     }
 
     private Map<String, JsonNode> fetchLabelsBatch(String accessToken, List<String> labelIds) {
-        String boundary = "batch_gmail_" + UUID.randomUUID();
-        StringBuilder sb = new StringBuilder();
+        List<String> paths = new ArrayList<>(labelIds.size());
         for (String labelId : labelIds) {
-            sb.append("--").append(boundary).append("\r\n");
-            sb.append("Content-Type: application/http\r\n");
-            sb.append("\r\n");
-            sb.append("GET /gmail/v1/users/me/labels/")
-                    .append(labelId)
-                    .append("\r\n\r\n");
-        }
-        sb.append("--").append(boundary).append("--\r\n");
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(accessToken);
-        headers.setContentType(MediaType.parseMediaType("multipart/mixed; boundary=" + boundary));
-        HttpEntity<String> entity = new HttpEntity<>(sb.toString(), headers);
-
-        ResponseEntity<byte[]> response = restTemplate.exchange(
-                GmailApiConstants.BATCH_URL, HttpMethod.POST, entity, byte[].class);
-
-        String responseBody = response.getBody() == null
-                ? ""
-                : new String(response.getBody(), StandardCharsets.UTF_8);
-        MediaType contentType = response.getHeaders().getContentType();
-        String responseBoundary = batchParser.extractBatchBoundary(contentType != null ? contentType.toString() : "");
-        List<JsonNode> bodies = batchParser.parseBatchResponse(responseBody, responseBoundary);
-
-        Map<String, JsonNode> labelsById = new HashMap<>();
-        for (JsonNode body : bodies) {
-            String id = body.path("id").asText(null);
-            if (StringUtils.hasText(id)) {
-                labelsById.put(id, body);
-            }
+            paths.add("/gmail/v1/users/me/labels/" + labelId);
         }
 
-        return labelsById;
+        return indexById(postBatch(accessToken, paths));
     }
 
     private static MailFolderDto toFolderDto(
@@ -249,31 +213,11 @@ public class GmailClient {
 
     private List<MailMessageSummaryDto> fetchThreadSummariesBatch(
             String accessToken, List<String> threadIds, String folder) {
-        String boundary = "batch_gmail_" + UUID.randomUUID();
-        String requestBody = buildThreadBatchRequestBody(boundary, threadIds);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(accessToken);
-        headers.setContentType(MediaType.parseMediaType("multipart/mixed; boundary=" + boundary));
-        HttpEntity<String> entity = new HttpEntity<>(requestBody, headers);
-
-        ResponseEntity<byte[]> response = restTemplate.exchange(
-                GmailApiConstants.BATCH_URL, HttpMethod.POST, entity, byte[].class);
-
-        String responseBody = response.getBody() == null
-                ? ""
-                : new String(response.getBody(), StandardCharsets.UTF_8);
-        MediaType contentType = response.getHeaders().getContentType();
-        String responseBoundary = batchParser.extractBatchBoundary(contentType != null ? contentType.toString() : "");
-        List<JsonNode> threadBodies = batchParser.parseBatchResponse(responseBody, responseBoundary);
-
-        Map<String, JsonNode> byThreadId = new HashMap<>();
-        for (JsonNode body : threadBodies) {
-            String id = body.path("id").asText(null);
-            if (StringUtils.hasText(id)) {
-                byThreadId.put(id, body);
-            }
+        List<String> paths = new ArrayList<>(threadIds.size());
+        for (String threadId : threadIds) {
+            paths.add("/gmail/v1/users/me/threads/" + threadId + "?" + GmailApiConstants.METADATA_QUERY);
         }
+        Map<String, JsonNode> byThreadId = indexById(postBatch(accessToken, paths));
 
         List<MailMessageSummaryDto> result = new ArrayList<>(threadIds.size());
         for (String threadId : threadIds) {
@@ -289,21 +233,44 @@ public class GmailClient {
         return result;
     }
 
-    private String buildThreadBatchRequestBody(String boundary, List<String> threadIds) {
+    /** Gmail batch API로 GET 경로들을 한 번에 보내고, 각 JSON body를 반환한다. */
+    private List<JsonNode> postBatch(String accessToken, List<String> relativeGets) {
+        String boundary = "batch_gmail_" + UUID.randomUUID();
         StringBuilder sb = new StringBuilder();
-        for (String threadId : threadIds) {
+        for (String path : relativeGets) {
             sb.append("--").append(boundary).append("\r\n");
             sb.append("Content-Type: application/http\r\n");
             sb.append("\r\n");
-            sb.append("GET /gmail/v1/users/me/threads/")
-                    .append(threadId)
-                    .append("?")
-                    .append(GmailApiConstants.METADATA_QUERY)
-                    .append("\r\n\r\n");
+            sb.append("GET ").append(path).append("\r\n\r\n");
         }
         sb.append("--").append(boundary).append("--\r\n");
 
-        return sb.toString();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        headers.setContentType(MediaType.parseMediaType("multipart/mixed; boundary=" + boundary));
+        HttpEntity<String> entity = new HttpEntity<>(sb.toString(), headers);
+
+        ResponseEntity<byte[]> response = restTemplate.exchange(
+                GmailApiConstants.BATCH_URL, HttpMethod.POST, entity, byte[].class);
+        String responseBody = response.getBody() == null
+                ? ""
+                : new String(response.getBody(), StandardCharsets.UTF_8);
+        MediaType contentType = response.getHeaders().getContentType();
+        String responseBoundary = batchParser.extractBatchBoundary(contentType != null ? contentType.toString() : "");
+
+        return batchParser.parseBatchResponse(responseBody, responseBoundary);
+    }
+
+    private static Map<String, JsonNode> indexById(List<JsonNode> bodies) {
+        Map<String, JsonNode> byId = new HashMap<>();
+        for (JsonNode body : bodies) {
+            String id = body.path("id").asText(null);
+            if (StringUtils.hasText(id)) {
+                byId.put(id, body);
+            }
+        }
+
+        return byId;
     }
 
     private JsonNode exchange(String accessToken, String url, HttpMethod method, JsonNode body) {
@@ -341,6 +308,13 @@ public class GmailClient {
             case GmailApiConstants.FOLDER_DRAFT -> GmailApiConstants.LABEL_DRAFT;
             default -> GmailApiConstants.LABEL_INBOX;
         };
+    }
+
+    private static String messageUrl(String messageId) {
+        return UriComponentsBuilder.fromUriString(GmailApiConstants.USERS_ME_BASE + "/messages/" + messageId)
+                .queryParam("format", "full")
+                .build()
+                .toUriString();
     }
 
 }

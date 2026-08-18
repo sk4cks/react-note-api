@@ -110,7 +110,7 @@ class MailMimeFactoryTest {
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("10MB")
                 .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.MAIL_INVALID_ATTACHMENT);
+                .isEqualTo(ErrorCode.MAIL_ATTACHMENT_TOO_LARGE);
     }
 
     private static String toString(MimeMessage message) throws Exception {

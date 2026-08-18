@@ -120,7 +120,7 @@ class MailControllerTest {
   @Test
   void getMessage_returnsNotFound_whenMessageMissing() throws Exception {
     when(mailService.getMessage(PRINCIPAL, "inbox", "missing"))
-        .thenThrow(new ApiException(ErrorCode.MAIL_MESSAGE_NOT_FOUND, "Message not found: missing"));
+        .thenThrow(new ApiException(ErrorCode.MAIL_MESSAGE_NOT_FOUND, "missing"));
 
     mockMvc
         .perform(get("/api/mail/messages/missing").with(authenticatedJwt()))

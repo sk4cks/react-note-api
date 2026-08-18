@@ -72,6 +72,17 @@ final class GmailMessageParser {
                 attachments);
     }
 
+    /** message payload에서 attachmentId가 일치하는 첨부를 찾는다. 없으면 null. */
+    MailAttachmentDto findAttachment(JsonNode body, String attachmentId) {
+        List<MailAttachmentDto> attachments = new ArrayList<>();
+        collectAttachments(body.path("payload"), attachments);
+
+        return attachments.stream()
+                .filter(candidate -> candidate.id().equals(attachmentId))
+                .findFirst()
+                .orElse(null);
+    }
+
     /** payload tree에서 filename + attachmentId를 가진 part를 첨부로 모은다. */
     private static void collectAttachments(JsonNode part, List<MailAttachmentDto> out) {
         String filename = part.path("filename").asText("");

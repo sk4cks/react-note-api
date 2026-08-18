@@ -271,7 +271,7 @@ public class AuthServerClient {
             return body;
 
         } catch (HttpClientErrorException.NotFound ex) {
-            throw new ApiException(ErrorCode.MAIL_MAILBOX_NOT_FOUND, "Mailbox credentials not found for user: " + userId);
+            throw new ApiException(ErrorCode.MAIL_MAILBOX_NOT_FOUND, userId);
         }
     }
 }

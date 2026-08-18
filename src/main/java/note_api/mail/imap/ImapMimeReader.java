@@ -37,8 +37,9 @@ final class ImapMimeReader {
     /**
      * @param body            HTML이 있으면 HTML, 없으면 plain text
      * @param bodyContentType {@code text/html} 또는 {@code text/plain}
+     * @param preview         상세 목록 카드용 텍스트. cid 이미지를 넣기 전의 본문에서 뽑는다.
      */
-    record Content(String body, String bodyContentType, List<MailAttachmentDto> attachments) {}
+    record Content(String body, String bodyContentType, String preview, List<MailAttachmentDto> attachments) {}
 
     static Content read(Part message) throws MessagingException, IOException {
         Walker walker = new Walker();
@@ -47,12 +48,51 @@ final class ImapMimeReader {
         return walker.toContent();
     }
 
+    /**
+     * 목록 preview용. 이미지는 읽지 않고 text/plain을 우선, 없으면 HTML 태그만 벗긴다.
+     * 상세 {@link #read}와 달리 첨부·cid 이미지를 디코딩하지 않는다.
+     */
+    static String previewText(Part message) throws MessagingException, IOException {
+        Object content = message.getContent();
+        if (content instanceof String text) {
+            return message.isMimeType("text/html") ? stripTags(text) : text;
+        }
+        if (content instanceof Multipart multipart) {
+            return previewFromMultipart(multipart);
+        }
+
+        return "";
+    }
+
+    private static String previewFromMultipart(Multipart multipart) throws MessagingException, IOException {
+        for (int i = 0; i < multipart.getCount(); i++) {
+            var part = multipart.getBodyPart(i);
+            if (part.isMimeType("text/plain") && !isAttachment(part) && part.getContent() instanceof String text) {
+                return text;
+            }
+            if (part.getContent() instanceof Multipart nested) {
+                String nestedText = previewFromMultipart(nested);
+                if (StringUtils.hasText(nestedText)) {
+                    return nestedText;
+                }
+            }
+        }
+        for (int i = 0; i < multipart.getCount(); i++) {
+            var part = multipart.getBodyPart(i);
+            if (part.isMimeType("text/html") && !isAttachment(part) && part.getContent() instanceof String html) {
+                return stripTags(html);
+            }
+        }
+
+        return "";
+    }
+
     /** 인덱스 경로로 part를 찾아 내용을 읽는다. */
     static MailAttachmentContent readAttachment(Part message, String attachmentId)
             throws MessagingException, IOException {
         Part part = findByPath(message, attachmentId);
         if (part == null) {
-            throw new ApiException(ErrorCode.MAIL_ATTACHMENT_NOT_FOUND, "Attachment not found: " + attachmentId);
+            throw new ApiException(ErrorCode.MAIL_ATTACHMENT_NOT_FOUND, attachmentId);
         }
 
         return new MailAttachmentContent(
@@ -137,11 +177,12 @@ final class ImapMimeReader {
         }
 
         private Content toContent() {
+            String preview = StringUtils.hasText(plain) ? plain : stripTags(html);
             if (StringUtils.hasText(html)) {
-                return new Content(inlineCidUrls(html), "text/html", List.copyOf(attachments));
+                return new Content(inlineCidUrls(html), "text/html", preview, List.copyOf(attachments));
             }
 
-            return new Content(plain != null ? plain : "", "text/plain", List.copyOf(attachments));
+            return new Content(plain != null ? plain : "", "text/plain", preview, List.copyOf(attachments));
         }
 
         /** 본문의 {@code cid:} 참조를 data URL로 치환한다. */
@@ -172,6 +213,14 @@ final class ImapMimeReader {
         String[] type = baseMimeType(part).split("/");
 
         return type.length == 2 ? type[0] + "." + type[1] : "attachment";
+    }
+
+    private static String stripTags(String html) {
+        if (!StringUtils.hasText(html)) {
+            return "";
+        }
+
+        return html.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
     }
 
     private static String contentId(Part part) throws MessagingException {

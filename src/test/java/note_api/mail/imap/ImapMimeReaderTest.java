@@ -48,6 +48,7 @@ class ImapMimeReaderTest {
 
         assertThat(content.body()).doesNotContain("cid:");
         assertThat(content.body()).contains("data:image/png;base64," + PNG_BASE64);
+        assertThat(content.preview()).doesNotContain("data:image");
         assertThat(content.attachments()).isEmpty();
     }
 

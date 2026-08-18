@@ -52,46 +52,42 @@ public final class MailMimeFactory {
         message.setSubject(request.subject() != null ? request.subject() : "", "UTF-8");
 
         InlineHtml inline = rewriteDataUrls(request.body() != null ? request.body() : "");
-        List<MailAttachmentRequest> files = request.attachments();
+        List<DecodedAttachment> files = decodeAttachments(request.attachments());
         if (files.size() > MAX_ATTACHMENTS) {
-            throw new ApiException(ErrorCode.MAIL_INVALID_ATTACHMENT, "첨부파일은 최대 " + MAX_ATTACHMENTS + "개까지 가능합니다.");
+            throw new ApiException(ErrorCode.MAIL_ATTACHMENT_TOO_MANY, MAX_ATTACHMENTS);
         }
 
         int totalBytes = inline.totalBytes();
-        for (MailAttachmentRequest attachment : files) {
-            totalBytes += decodeBase64(attachment.contentBase64()).length;
+        for (DecodedAttachment attachment : files) {
+            totalBytes += attachment.bytes().length;
         }
         if (totalBytes > MAX_TOTAL_BYTES) {
-            throw new ApiException(ErrorCode.MAIL_INVALID_ATTACHMENT, "이미지와 첨부파일을 합쳐 10MB를 넘을 수 없습니다.");
+            throw new ApiException(ErrorCode.MAIL_ATTACHMENT_TOO_LARGE, MAX_TOTAL_BYTES / (1024 * 1024));
         }
 
         boolean hasInline = !inline.parts().isEmpty();
         boolean hasFiles = !files.isEmpty();
-        MimeBodyPart htmlPart = htmlBodyPart(inline.html());
-
         if (!hasInline && !hasFiles) {
             message.setContent(inline.html(), "text/html; charset=UTF-8");
 
             return message;
         }
-        if (hasInline && !hasFiles) {
+
+        MimeBodyPart htmlPart = htmlBodyPart(inline.html());
+        if (!hasFiles) {
             message.setContent(relatedMultipart(htmlPart, inline.parts()));
 
             return message;
         }
-        if (!hasInline) {
-            MimeMultipart mixed = new MimeMultipart("mixed");
-            mixed.addBodyPart(htmlPart);
-            addAttachments(mixed, files);
-            message.setContent(mixed);
 
-            return message;
-        }
-
-        MimeBodyPart relatedWrapper = new MimeBodyPart();
-        relatedWrapper.setContent(relatedMultipart(htmlPart, inline.parts()));
         MimeMultipart mixed = new MimeMultipart("mixed");
-        mixed.addBodyPart(relatedWrapper);
+        if (hasInline) {
+            MimeBodyPart relatedWrapper = new MimeBodyPart();
+            relatedWrapper.setContent(relatedMultipart(htmlPart, inline.parts()));
+            mixed.addBodyPart(relatedWrapper);
+        } else {
+            mixed.addBodyPart(htmlPart);
+        }
         addAttachments(mixed, files);
         message.setContent(mixed);
 
@@ -133,9 +129,9 @@ public final class MailMimeFactory {
         return related;
     }
 
-    private static void addAttachments(MimeMultipart mixed, List<MailAttachmentRequest> files)
+    private static void addAttachments(MimeMultipart mixed, List<DecodedAttachment> files)
             throws MessagingException {
-        for (MailAttachmentRequest attachment : files) {
+        for (DecodedAttachment attachment : files) {
             mixed.addBodyPart(toAttachmentPart(attachment));
         }
     }
@@ -144,11 +140,10 @@ public final class MailMimeFactory {
      * 파일명은 raw로 넘긴다. Jakarta Mail이 RFC 2231로 인코딩하므로
      * 미리 encoded-word로 바꾸면 파라미터 분할과 겹쳐 이름이 깨진다.
      */
-    private static MimeBodyPart toAttachmentPart(MailAttachmentRequest attachment) throws MessagingException {
-        byte[] bytes = decodeBase64(attachment.contentBase64());
+    private static MimeBodyPart toAttachmentPart(DecodedAttachment attachment) throws MessagingException {
         MimeBodyPart part = new MimeBodyPart();
         part.setDataHandler(
-                new DataHandler(new ByteArrayDataSource(bytes, safeContentType(attachment.contentType()))));
+                new DataHandler(new ByteArrayDataSource(attachment.bytes(), safeContentType(attachment.contentType()))));
         part.setFileName(safeFilename(attachment.filename()));
         part.setDisposition(Part.ATTACHMENT);
 
@@ -174,15 +169,27 @@ public final class MailMimeFactory {
         return new InlineHtml(rewritten.toString(), parts, totalBytes);
     }
 
+    private static List<DecodedAttachment> decodeAttachments(List<MailAttachmentRequest> files) {
+        List<DecodedAttachment> decoded = new ArrayList<>(files.size());
+        for (MailAttachmentRequest attachment : files) {
+            decoded.add(new DecodedAttachment(
+                    attachment.filename(),
+                    attachment.contentType(),
+                    decodeBase64(attachment.contentBase64())));
+        }
+
+        return decoded;
+    }
+
     private static byte[] decodeBase64(String value) {
         if (!StringUtils.hasText(value)) {
-            throw new ApiException(ErrorCode.MAIL_INVALID_ATTACHMENT, "첨부파일 내용이 없습니다.");
+            throw new ApiException(ErrorCode.MAIL_ATTACHMENT_EMPTY);
         }
         try {
             return Base64.getMimeDecoder().decode(value);
 
         } catch (IllegalArgumentException ex) {
-            throw new ApiException(ErrorCode.MAIL_INVALID_ATTACHMENT, "첨부파일 인코딩이 올바르지 않습니다.");
+            throw new ApiException(ErrorCode.MAIL_ATTACHMENT_ENCODING);
         }
     }
 
@@ -192,7 +199,7 @@ public final class MailMimeFactory {
      */
     private static String safeFilename(String filename) {
         if (!StringUtils.hasText(filename)) {
-            throw new ApiException(ErrorCode.MAIL_INVALID_ATTACHMENT, "첨부파일 이름이 없습니다.");
+            throw new ApiException(ErrorCode.MAIL_ATTACHMENT_FILENAME);
         }
         String name = filename.replace('\\', '/');
         int slash = name.lastIndexOf('/');
@@ -201,7 +208,7 @@ public final class MailMimeFactory {
         }
         name = Normalizer.normalize(name.replaceAll("[\\r\\n\"]", "_"), Normalizer.Form.NFC);
         if (!StringUtils.hasText(name)) {
-            throw new ApiException(ErrorCode.MAIL_INVALID_ATTACHMENT, "첨부파일 이름이 없습니다.");
+            throw new ApiException(ErrorCode.MAIL_ATTACHMENT_FILENAME);
         }
 
         return name;
@@ -218,4 +225,6 @@ public final class MailMimeFactory {
     private record InlineImage(String cid, String contentType, byte[] bytes) {}
 
     private record InlineHtml(String html, List<InlineImage> parts, int totalBytes) {}
+
+    private record DecodedAttachment(String filename, String contentType, byte[] bytes) {}
 }
