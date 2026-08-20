@@ -63,6 +63,8 @@ final class GmailMessageParser {
                 parsedFrom.displayName(),
                 parsedFrom.email(),
                 headers.to(),
+                headers.cc(),
+                headers.bcc(),
                 headers.subject(),
                 body.path("snippet").asText(""),
                 bodyContent.body(),
@@ -166,6 +168,8 @@ final class GmailMessageParser {
     private static HeaderValues extractHeaders(JsonNode payload) {
         String from = "";
         String to = "";
+        String cc = "";
+        String bcc = "";
         String subject = "";
         String date = "";
         JsonNode headers = payload.path("headers");
@@ -176,6 +180,8 @@ final class GmailMessageParser {
                 switch (name.toLowerCase()) {
                     case GmailApiConstants.HEADER_FROM -> from = value;
                     case GmailApiConstants.HEADER_TO -> to = value;
+                    case GmailApiConstants.HEADER_CC -> cc = value;
+                    case GmailApiConstants.HEADER_BCC -> bcc = value;
                     case GmailApiConstants.HEADER_SUBJECT -> subject = value;
                     case GmailApiConstants.HEADER_DATE -> date = value;
                     default -> {
@@ -184,7 +190,7 @@ final class GmailMessageParser {
             }
         }
 
-        return new HeaderValues(from, to, subject, date);
+        return new HeaderValues(from, to, cc, bcc, subject, date);
     }
 
     /** HTML 본문 우선, 없으면 plain text, 둘 다 없으면 빈 문자열 */
@@ -262,7 +268,7 @@ final class GmailMessageParser {
         return StringUtils.hasText(headerDate) ? headerDate : Instant.now().toString();
     }
 
-    private record HeaderValues(String from, String to, String subject, String date) {}
+    private record HeaderValues(String from, String to, String cc, String bcc, String subject, String date) {}
 
     private record ParsedFrom(String displayName, String email) {}
 

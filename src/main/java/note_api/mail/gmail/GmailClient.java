@@ -9,6 +9,7 @@ import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailMessageSummaryDto;
+import note_api.mail.dto.MailRecipientSuggestion;
 import note_api.mail.dto.SendMailRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,9 +27,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
 
 @Component
 public class GmailClient {
@@ -169,6 +172,92 @@ public class GmailClient {
                         labelsById.get(GmailApiConstants.LABEL_DRAFT),
                         GmailApiConstants.LABEL_FIELD_THREADS_TOTAL));
     }
+
+    /**
+     * 최근 inbox/sent 메시지 헤더에서 From/To/Cc를 모아 수신자 후보를 만든다.
+     */
+    public List<MailRecipientSuggestion> suggestRecipients(String accessToken, String query) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
+                        GmailApiConstants.USERS_ME_BASE + "/messages")
+                .queryParam("maxResults", 40)
+                .queryParam("q", "in:inbox OR in:sent");
+        JsonNode listBody = exchange(accessToken, builder.build().toUriString(), HttpMethod.GET, null);
+        JsonNode messages = listBody.path("messages");
+        if (!messages.isArray() || messages.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> paths = new ArrayList<>();
+        for (JsonNode message : messages) {
+            String id = message.path("id").asText(null);
+            if (StringUtils.hasText(id)) {
+                paths.add("/gmail/v1/users/me/messages/"
+                        + id
+                        + "?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc");
+            }
+        }
+        List<JsonNode> bodies = postBatch(accessToken, paths);
+        LinkedHashMap<String, MailRecipientSuggestion> byEmail = new LinkedHashMap<>();
+        String q = query == null ? "" : query.trim().toLowerCase();
+        for (JsonNode body : bodies) {
+            collectHeaderAddresses(body.path("payload").path("headers"), byEmail, q);
+        }
+
+        return byEmail.values().stream().limit(20).toList();
+    }
+
+    private static void collectHeaderAddresses(
+            JsonNode headers, LinkedHashMap<String, MailRecipientSuggestion> byEmail, String query) {
+        if (!headers.isArray()) {
+            return;
+        }
+        for (JsonNode header : headers) {
+            String name = header.path("name").asText("");
+            if (!"from".equalsIgnoreCase(name)
+                    && !"to".equalsIgnoreCase(name)
+                    && !"cc".equalsIgnoreCase(name)) {
+                continue;
+            }
+            String value = header.path("value").asText("");
+            if (!StringUtils.hasText(value)) {
+                continue;
+            }
+            for (String part : value.split(",")) {
+                ParsedFrom parsed = parseAddress(part.trim());
+                if (!StringUtils.hasText(parsed.email())) {
+                    continue;
+                }
+                String key = parsed.email().toLowerCase();
+                if (StringUtils.hasText(query)
+                        && !key.contains(query)
+                        && !(parsed.displayName() != null
+                                && parsed.displayName().toLowerCase().contains(query))) {
+                    continue;
+                }
+                byEmail.putIfAbsent(key, MailRecipientSuggestion.of(parsed.email(), parsed.displayName()));
+            }
+        }
+    }
+
+    private static ParsedFrom parseAddress(String raw) {
+        Matcher matcher = GmailApiConstants.FROM_HEADER.matcher(raw);
+        if (matcher.matches()) {
+            if (matcher.group(2) != null) {
+                String name = matcher.group(1) != null ? matcher.group(1).trim() : matcher.group(2);
+
+                return new ParsedFrom(name, matcher.group(2));
+            }
+
+            return new ParsedFrom(matcher.group(3), matcher.group(3));
+        }
+        if (raw.contains("@")) {
+            return new ParsedFrom(raw, raw);
+        }
+
+        return new ParsedFrom("", "");
+    }
+
+    private record ParsedFrom(String displayName, String email) {}
 
     private int countThreadsByQuery(String accessToken, String query) {
         int count = 0;

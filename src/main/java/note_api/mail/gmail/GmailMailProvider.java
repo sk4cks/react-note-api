@@ -6,6 +6,7 @@ import note_api.mail.dto.MailAttachmentContent;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
+import note_api.mail.dto.MailRecipientSuggestion;
 import note_api.mail.dto.SendMailRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -112,5 +113,12 @@ public class GmailMailProvider implements MailProvider {
         String googleToken = authServerClient.fetchGoogleAccessToken(userId);
 
         return gmailClient.getFolderStats(googleToken);
+    }
+
+    @Override
+    public List<MailRecipientSuggestion> suggestRecipients(String userId, String query) {
+        String googleToken = authServerClient.fetchGoogleAccessToken(userId);
+
+        return gmailClient.suggestRecipients(googleToken, query);
     }
 }

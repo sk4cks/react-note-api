@@ -39,6 +39,8 @@ class GmailMessageParserTest {
                                     "headers": [
                                       {"name": "From", "value": "Alice <alice@example.com>"},
                                       {"name": "To", "value": "sk4cks@gmail.com"},
+                                      {"name": "Cc", "value": "cc@example.com"},
+                                      {"name": "Bcc", "value": "bcc@example.com"},
                                       {"name": "Subject", "value": "Hello"}
                                     ],
                                     "parts": [
@@ -60,6 +62,9 @@ class GmailMessageParserTest {
         assertThat(detail.folder()).isEqualTo("inbox");
         assertThat(detail.from()).isEqualTo("Alice");
         assertThat(detail.fromEmail()).isEqualTo("alice@example.com");
+        assertThat(detail.to()).isEqualTo("sk4cks@gmail.com");
+        assertThat(detail.cc()).isEqualTo("cc@example.com");
+        assertThat(detail.bcc()).isEqualTo("bcc@example.com");
         assertThat(detail.subject()).isEqualTo("Hello");
         assertThat(detail.body()).isEqualTo(htmlBody);
         assertThat(detail.bodyContentType()).isEqualTo("text/html");

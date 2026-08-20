@@ -4,6 +4,7 @@ import note_api.mail.dto.MailAttachmentContent;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
+import note_api.mail.dto.MailRecipientSuggestion;
 import note_api.mail.dto.SendMailRequest;
 
 import java.util.List;
@@ -20,4 +21,7 @@ public interface MailProvider {
     void sendMessage(String userId, SendMailRequest request);
 
     List<MailFolderDto> getFolderStats(String userId);
+
+    /** 최근 메일 헤더에서 수신자 후보를 모은다. query가 있으면 필터. */
+    List<MailRecipientSuggestion> suggestRecipients(String userId, String query);
 }

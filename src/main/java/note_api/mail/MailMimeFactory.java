@@ -48,7 +48,9 @@ public final class MailMimeFactory {
         if (StringUtils.hasText(from)) {
             message.setFrom(new InternetAddress(from));
         }
-        message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(request.to(), false));
+        setRecipients(message, Message.RecipientType.TO, request.to());
+        setRecipients(message, Message.RecipientType.CC, request.cc());
+        setRecipients(message, Message.RecipientType.BCC, request.bcc());
         message.setSubject(request.subject() != null ? request.subject() : "", "UTF-8");
 
         InlineHtml inline = rewriteDataUrls(request.body() != null ? request.body() : "");
@@ -105,6 +107,15 @@ public final class MailMimeFactory {
         } catch (MessagingException | IOException ex) {
             throw new IllegalStateException("Failed to build MIME message", ex);
         }
+    }
+
+    private static void setRecipients(
+            MimeMessage message, Message.RecipientType type, List<String> addresses)
+            throws MessagingException {
+        if (addresses == null || addresses.isEmpty()) {
+            return;
+        }
+        message.setRecipients(type, InternetAddress.parse(String.join(",", addresses), false));
     }
 
     private static MimeBodyPart htmlBodyPart(String html) throws MessagingException {

@@ -46,4 +46,8 @@ public class MailService {
     public List<MailFolderDto> getFolderStats(String principal) {
         return mailProvider.getFolderStats(principal);
     }
+
+    public List<note_api.mail.dto.MailRecipientSuggestion> suggestRecipients(String principal, String query) {
+        return mailProvider.suggestRecipients(principal, query);
+    }
 }

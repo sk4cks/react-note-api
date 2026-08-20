@@ -33,6 +33,8 @@ final class GmailApiConstants {
 
     static final String HEADER_FROM = "from";
     static final String HEADER_TO = "to";
+    static final String HEADER_CC = "cc";
+    static final String HEADER_BCC = "bcc";
     static final String HEADER_SUBJECT = "subject";
     static final String HEADER_DATE = "date";
 

@@ -139,6 +139,8 @@ class MailControllerTest {
             "Alice",
             "alice@example.com",
             PRINCIPAL,
+            "",
+            "",
             "Hello",
             "Preview",
             "<p>Body</p>",
@@ -197,7 +199,7 @@ class MailControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
-                    {"to":"recipient@example.com","subject":"Test","body":"Hello"}
+                    {"to":["recipient@example.com"],"subject":"Test","body":"Hello"}
                     """))
         .andExpect(status().isOk());
 
@@ -217,8 +219,39 @@ class MailControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
-                    {"to":"not-an-email","subject":"Test","body":"Hello"}
+                    {"to":["not-an-email"],"subject":"Test","body":"Hello"}
                     """))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void sendMail_succeeds_withCcAndBcc() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/mail/send")
+                .with(authenticatedJwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "to":["a@example.com","b@example.com"],
+                      "cc":["cc@example.com"],
+                      "bcc":["bcc@example.com"],
+                      "subject":"Test",
+                      "body":"Hello"
+                    }
+                    """))
+        .andExpect(status().isOk());
+
+    verify(mailService)
+        .sendMessage(
+            eq(PRINCIPAL),
+            eq(new SendMailRequest(
+                List.of("a@example.com", "b@example.com"),
+                List.of("cc@example.com"),
+                List.of("bcc@example.com"),
+                "Test",
+                "Hello",
+                List.of())));
   }
 }

@@ -146,6 +146,8 @@ class MailServiceTest {
         "Alice",
         "alice@example.com",
         PRINCIPAL,
+        "",
+        "",
         "Hello",
         "Preview",
         "Body",

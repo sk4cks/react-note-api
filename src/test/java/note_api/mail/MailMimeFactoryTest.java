@@ -33,6 +33,22 @@ class MailMimeFactoryTest {
     }
 
     @Test
+    void create_setsToCcBccHeaders() throws Exception {
+        SendMailRequest request = new SendMailRequest(
+                List.of("a@example.com", "b@example.com"),
+                List.of("cc@example.com"),
+                List.of("bcc@example.com"),
+                "Hi",
+                "<p>Hello</p>",
+                List.of());
+        String mime = toString(MailMimeFactory.create(Session.getInstance(new Properties()), "from@example.com", request));
+
+        assertThat(mime).contains("To: a@example.com, b@example.com");
+        assertThat(mime).contains("Cc: cc@example.com");
+        assertThat(mime).contains("Bcc: bcc@example.com");
+    }
+
+    @Test
     void create_rewritesDataUrlImagesToCid() throws Exception {
         String png = Base64.getEncoder().encodeToString(new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47});
         SendMailRequest request =

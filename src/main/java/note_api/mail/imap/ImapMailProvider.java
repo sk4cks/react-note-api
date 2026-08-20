@@ -9,6 +9,7 @@ import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailMessageSummaryDto;
+import note_api.mail.dto.MailRecipientSuggestion;
 import note_api.mail.dto.SendMailRequest;
 import note_api.common.exception.ApiException;
 import note_api.common.exception.ErrorCode;
@@ -34,7 +35,10 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -216,9 +220,13 @@ public class ImapMailProvider implements MailProvider {
         try {
             Session smtpSession = createSmtpSession(creds);
             MimeMessage message = MailMimeFactory.create(smtpSession, creds.mailAddress(), request);
-            message.setSentDate(new Date());
+            Date sentDate = new Date();
+            message.setSentDate(sentDate);
             Transport.send(message);
-            appendToSent(creds, message);
+            // Transport.send는 Bcc 헤더를 제거한다. Sent 보관본은 다시 만들어 보낸 사람이 보이게 한다.
+            MimeMessage sentCopy = MailMimeFactory.create(smtpSession, creds.mailAddress(), request);
+            sentCopy.setSentDate(sentDate);
+            appendToSent(creds, sentCopy);
 
         } catch (MessagingException ex) {
             throw new IllegalStateException("SMTP send failed for user " + userId, ex);
@@ -266,6 +274,79 @@ public class ImapMailProvider implements MailProvider {
 
         } catch (MessagingException ex) {
             throw new IllegalStateException("IMAP folder stats failed for user " + userId, ex);
+        }
+    }
+
+    @Override
+    public List<MailRecipientSuggestion> suggestRecipients(String userId, String query) {
+        MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
+        String self = creds.mailAddress() == null ? "" : creds.mailAddress().toLowerCase(Locale.ROOT);
+        LinkedHashMap<String, MailRecipientSuggestion> byEmail = new LinkedHashMap<>();
+        try (ImapSession session = openImap(creds)) {
+            collectRecipientsFromFolder(session.store(), "inbox", 50, self, byEmail);
+            collectRecipientsFromFolder(session.store(), "sent", 50, self, byEmail);
+        } catch (MessagingException ex) {
+            throw new IllegalStateException("IMAP recipient suggest failed for user " + userId, ex);
+        }
+        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        return byEmail.values().stream()
+                .filter(item -> {
+                    if (!StringUtils.hasText(q)) {
+                        return true;
+                    }
+                    return item.email().toLowerCase(Locale.ROOT).contains(q)
+                            || (item.displayName() != null
+                                    && item.displayName().toLowerCase(Locale.ROOT).contains(q));
+                })
+                .limit(20)
+                .toList();
+    }
+
+    private void collectRecipientsFromFolder(
+            Store store,
+            String folder,
+            int limit,
+            String selfEmail,
+            Map<String, MailRecipientSuggestion> byEmail)
+            throws MessagingException {
+        Folder imapFolder = openFolder(store, folder, Folder.READ_ONLY);
+        try {
+            int total = imapFolder.getMessageCount();
+            if (total == 0) {
+                return;
+            }
+            int start = Math.max(1, total - limit + 1);
+            Message[] messages = imapFolder.getMessages(start, total);
+            for (int i = messages.length - 1; i >= 0; i--) {
+                Message message = messages[i];
+                addAddresses(message.getFrom(), selfEmail, byEmail);
+                addAddresses(message.getRecipients(Message.RecipientType.TO), selfEmail, byEmail);
+                addAddresses(message.getRecipients(Message.RecipientType.CC), selfEmail, byEmail);
+            }
+        } finally {
+            closeQuietly(imapFolder);
+        }
+    }
+
+    private static void addAddresses(
+            Address[] addresses, String selfEmail, Map<String, MailRecipientSuggestion> byEmail) {
+        if (addresses == null) {
+            return;
+        }
+        for (Address address : addresses) {
+            if (!(address instanceof InternetAddress internetAddress)) {
+                continue;
+            }
+            String email = internetAddress.getAddress();
+            if (!StringUtils.hasText(email)) {
+                continue;
+            }
+            String key = email.toLowerCase(Locale.ROOT);
+            if (key.equals(selfEmail)) {
+                continue;
+            }
+            String name = internetAddress.getPersonal();
+            byEmail.putIfAbsent(key, MailRecipientSuggestion.of(email, name != null ? name : ""));
         }
     }
 
@@ -400,6 +481,8 @@ public class ImapMailProvider implements MailProvider {
                 envelope.fromName(),
                 envelope.fromEmail(),
                 envelope.to(),
+                envelope.cc(),
+                envelope.bcc(),
                 envelope.subject(),
                 previewOf(content.preview()),
                 content.body(),
@@ -410,7 +493,15 @@ public class ImapMailProvider implements MailProvider {
     }
 
     private record Envelope(
-            long uid, String fromEmail, String fromName, String to, String subject, Date sentDate, boolean unread) {}
+            long uid,
+            String fromEmail,
+            String fromName,
+            String to,
+            String cc,
+            String bcc,
+            String subject,
+            Date sentDate,
+            boolean unread) {}
 
     private static Envelope envelope(Message message, UIDFolder uidFolder) throws MessagingException {
         Address[] from = message.getFrom();
@@ -420,7 +511,9 @@ public class ImapMailProvider implements MailProvider {
                 uidFolder.getUID(message),
                 fromEmail,
                 extractPersonal(from, fromEmail),
-                extractEmail(message.getRecipients(Message.RecipientType.TO)),
+                formatAddresses(message.getRecipients(Message.RecipientType.TO)),
+                formatAddresses(message.getRecipients(Message.RecipientType.CC)),
+                formatAddresses(message.getRecipients(Message.RecipientType.BCC)),
                 message.getSubject() != null ? message.getSubject() : "(no subject)",
                 message.getSentDate(),
                 !message.isSet(Flags.Flag.SEEN));
@@ -436,6 +529,26 @@ public class ImapMailProvider implements MailProvider {
         }
 
         return addresses[0].toString();
+    }
+
+    /** 수신자 헤더 표시용. 여러 주소는 쉼표로 이어 붙인다. */
+    private static String formatAddresses(Address[] addresses) {
+        if (addresses == null || addresses.length == 0) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Address address : addresses) {
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            if (address instanceof InternetAddress internetAddress) {
+                sb.append(internetAddress.toUnicodeString());
+            } else {
+                sb.append(address.toString());
+            }
+        }
+
+        return sb.toString();
     }
 
     /**

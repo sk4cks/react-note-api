@@ -26,6 +26,7 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -273,5 +274,158 @@ public class AuthServerClient {
         } catch (HttpClientErrorException.NotFound ex) {
             throw new ApiException(ErrorCode.MAIL_MAILBOX_NOT_FOUND, userId);
         }
+    }
+
+    private HttpHeaders internalHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Internal-Api-Key", internalApiKey);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+
+        return headers;
+    }
+
+    private String userPath(String userId, String suffix) {
+        return authServerBaseUrl + "/auth/users/" + userId + suffix;
+    }
+
+    public List<note_api.contact.dto.ContactResponse> listContacts(String userId, String q) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(userPath(userId, "/contacts"));
+        if (StringUtils.hasText(q)) {
+            builder.queryParam("q", q);
+        }
+        ResponseEntity<List<note_api.contact.dto.ContactResponse>> response = restTemplate.exchange(
+                builder.build().encode(StandardCharsets.UTF_8).toUriString(),
+                HttpMethod.GET,
+                new HttpEntity<>(internalHeaders()),
+                new ParameterizedTypeReference<>() {});
+
+        return response.getBody() == null ? List.of() : response.getBody();
+    }
+
+    public note_api.contact.dto.ContactResponse createContact(String userId, Map<String, Object> body) {
+        return restTemplate
+                .exchange(
+                        userPath(userId, "/contacts"),
+                        HttpMethod.POST,
+                        new HttpEntity<>(body, internalHeaders()),
+                        note_api.contact.dto.ContactResponse.class)
+                .getBody();
+    }
+
+    public note_api.contact.dto.ContactResponse updateContact(
+            String userId, Long contactId, Map<String, Object> body) {
+        return restTemplate
+                .exchange(
+                        userPath(userId, "/contacts/" + contactId),
+                        HttpMethod.PUT,
+                        new HttpEntity<>(body, internalHeaders()),
+                        note_api.contact.dto.ContactResponse.class)
+                .getBody();
+    }
+
+    public void deleteContact(String userId, Long contactId) {
+        restTemplate.exchange(
+                userPath(userId, "/contacts/" + contactId),
+                HttpMethod.DELETE,
+                new HttpEntity<>(internalHeaders()),
+                Void.class);
+    }
+
+    public List<note_api.contact.dto.RecipientSuggestItem> suggestContacts(String userId, String q) {
+        UriComponentsBuilder builder =
+                UriComponentsBuilder.fromUriString(userPath(userId, "/contacts/suggest"));
+        if (StringUtils.hasText(q)) {
+            builder.queryParam("q", q);
+        }
+        ResponseEntity<List<note_api.contact.dto.RecipientSuggestItem>> response = restTemplate.exchange(
+                builder.build().encode(StandardCharsets.UTF_8).toUriString(),
+                HttpMethod.GET,
+                new HttpEntity<>(internalHeaders()),
+                new ParameterizedTypeReference<>() {});
+
+        return response.getBody() == null ? List.of() : response.getBody();
+    }
+
+    public List<note_api.contact.dto.ContactGroupResponse> listContactGroups(String userId) {
+        ResponseEntity<List<note_api.contact.dto.ContactGroupResponse>> response = restTemplate.exchange(
+                userPath(userId, "/contact-groups"),
+                HttpMethod.GET,
+                new HttpEntity<>(internalHeaders()),
+                new ParameterizedTypeReference<>() {});
+
+        return response.getBody() == null ? List.of() : response.getBody();
+    }
+
+    public note_api.contact.dto.ContactGroupResponse createContactGroup(
+            String userId, Map<String, Object> body) {
+        return restTemplate
+                .exchange(
+                        userPath(userId, "/contact-groups"),
+                        HttpMethod.POST,
+                        new HttpEntity<>(body, internalHeaders()),
+                        note_api.contact.dto.ContactGroupResponse.class)
+                .getBody();
+    }
+
+    public note_api.contact.dto.ContactGroupResponse updateContactGroup(
+            String userId, Long groupId, Map<String, Object> body) {
+        return restTemplate
+                .exchange(
+                        userPath(userId, "/contact-groups/" + groupId),
+                        HttpMethod.PUT,
+                        new HttpEntity<>(body, internalHeaders()),
+                        note_api.contact.dto.ContactGroupResponse.class)
+                .getBody();
+    }
+
+    public void deleteContactGroup(String userId, Long groupId) {
+        restTemplate.exchange(
+                userPath(userId, "/contact-groups/" + groupId),
+                HttpMethod.DELETE,
+                new HttpEntity<>(internalHeaders()),
+                Void.class);
+    }
+
+    public note_api.contact.dto.ContactGroupResponse replaceContactGroupMembers(
+            String userId, Long groupId, Map<String, Object> body) {
+        return restTemplate
+                .exchange(
+                        userPath(userId, "/contact-groups/" + groupId + "/members"),
+                        HttpMethod.PUT,
+                        new HttpEntity<>(body, internalHeaders()),
+                        note_api.contact.dto.ContactGroupResponse.class)
+                .getBody();
+    }
+
+    public List<note_api.contact.dto.ContactGroupShareResponse> listContactGroupShares(
+            String userId, Long groupId) {
+        ResponseEntity<List<note_api.contact.dto.ContactGroupShareResponse>> response =
+                restTemplate.exchange(
+                        userPath(userId, "/contact-groups/" + groupId + "/shares"),
+                        HttpMethod.GET,
+                        new HttpEntity<>(internalHeaders()),
+                        new ParameterizedTypeReference<>() {});
+
+        return response.getBody() == null ? List.of() : response.getBody();
+    }
+
+    public note_api.contact.dto.ContactGroupShareResponse shareContactGroup(
+            String userId, Long groupId, Map<String, Object> body) {
+        return restTemplate
+                .exchange(
+                        userPath(userId, "/contact-groups/" + groupId + "/shares"),
+                        HttpMethod.POST,
+                        new HttpEntity<>(body, internalHeaders()),
+                        note_api.contact.dto.ContactGroupShareResponse.class)
+                .getBody();
+    }
+
+    public void revokeContactGroupShare(String userId, Long groupId, Long shareId) {
+        restTemplate.exchange(
+                userPath(userId, "/contact-groups/" + groupId + "/shares/" + shareId),
+                HttpMethod.DELETE,
+                new HttpEntity<>(internalHeaders()),
+                Void.class);
     }
 }
