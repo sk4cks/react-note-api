@@ -7,4 +7,6 @@ public record ContactGroupResponse(
         String name,
         boolean owned,
         String permission,
+        String ownerUserId,
+        String sharedByUserId,
         List<ContactResponse> members) {}

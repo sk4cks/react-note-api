@@ -13,6 +13,7 @@ import note_api.mail.dto.MailRecipientSuggestion;
 import note_api.mail.dto.SendMailRequest;
 import note_api.common.exception.ApiException;
 import note_api.common.exception.ErrorCode;
+import note_api.common.util.KoreanTextMatcher;
 import jakarta.mail.Address;
 import jakarta.mail.Flags;
 import jakarta.mail.Folder;
@@ -288,16 +289,9 @@ public class ImapMailProvider implements MailProvider {
         } catch (MessagingException ex) {
             throw new IllegalStateException("IMAP recipient suggest failed for user " + userId, ex);
         }
-        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        String q = query == null ? "" : query.trim();
         return byEmail.values().stream()
-                .filter(item -> {
-                    if (!StringUtils.hasText(q)) {
-                        return true;
-                    }
-                    return item.email().toLowerCase(Locale.ROOT).contains(q)
-                            || (item.displayName() != null
-                                    && item.displayName().toLowerCase(Locale.ROOT).contains(q));
-                })
+                .filter(item -> KoreanTextMatcher.matches(q, item.displayName(), item.email()))
                 .limit(20)
                 .toList();
     }

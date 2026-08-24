@@ -48,14 +48,6 @@ public class ContactController {
         return authServerClient.createContact(jwt.getSubject(), body);
     }
 
-    @PutMapping("/contacts/{id}")
-    public ContactResponse updateContact(
-            @AuthenticationPrincipal Jwt jwt,
-            @PathVariable Long id,
-            @RequestBody Map<String, Object> body) {
-        return authServerClient.updateContact(jwt.getSubject(), id, body);
-    }
-
     @DeleteMapping("/contacts/{id}")
     public ResponseEntity<Void> deleteContact(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
         authServerClient.deleteContact(jwt.getSubject(), id);

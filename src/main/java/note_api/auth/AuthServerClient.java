@@ -25,6 +25,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -289,13 +290,19 @@ public class AuthServerClient {
         return authServerBaseUrl + "/auth/users/" + userId + suffix;
     }
 
-    public List<note_api.contact.dto.ContactResponse> listContacts(String userId, String q) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(userPath(userId, "/contacts"));
+    /** RestTemplate.exchange(String)은 Hangul을 한 번 더 인코딩하므로 URI를 넘긴다. */
+    private URI userQueryUri(String userId, String suffix, String q) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(userPath(userId, suffix));
         if (StringUtils.hasText(q)) {
             builder.queryParam("q", q);
         }
+
+        return builder.build().encode(StandardCharsets.UTF_8).toUri();
+    }
+
+    public List<note_api.contact.dto.ContactResponse> listContacts(String userId, String q) {
         ResponseEntity<List<note_api.contact.dto.ContactResponse>> response = restTemplate.exchange(
-                builder.build().encode(StandardCharsets.UTF_8).toUriString(),
+                userQueryUri(userId, "/contacts", q),
                 HttpMethod.GET,
                 new HttpEntity<>(internalHeaders()),
                 new ParameterizedTypeReference<>() {});
@@ -313,17 +320,6 @@ public class AuthServerClient {
                 .getBody();
     }
 
-    public note_api.contact.dto.ContactResponse updateContact(
-            String userId, Long contactId, Map<String, Object> body) {
-        return restTemplate
-                .exchange(
-                        userPath(userId, "/contacts/" + contactId),
-                        HttpMethod.PUT,
-                        new HttpEntity<>(body, internalHeaders()),
-                        note_api.contact.dto.ContactResponse.class)
-                .getBody();
-    }
-
     public void deleteContact(String userId, Long contactId) {
         restTemplate.exchange(
                 userPath(userId, "/contacts/" + contactId),
@@ -333,13 +329,8 @@ public class AuthServerClient {
     }
 
     public List<note_api.contact.dto.RecipientSuggestItem> suggestContacts(String userId, String q) {
-        UriComponentsBuilder builder =
-                UriComponentsBuilder.fromUriString(userPath(userId, "/contacts/suggest"));
-        if (StringUtils.hasText(q)) {
-            builder.queryParam("q", q);
-        }
         ResponseEntity<List<note_api.contact.dto.RecipientSuggestItem>> response = restTemplate.exchange(
-                builder.build().encode(StandardCharsets.UTF_8).toUriString(),
+                userQueryUri(userId, "/contacts/suggest", q),
                 HttpMethod.GET,
                 new HttpEntity<>(internalHeaders()),
                 new ParameterizedTypeReference<>() {});

@@ -1,5 +1,4 @@
 package note_api.contact.dto;
 
-import java.util.List;
-
-public record ContactResponse(Long id, String displayName, String email) {}
+public record ContactResponse(
+        Long id, Long accountUserSeq, String displayName, String email, boolean fromAccount) {}

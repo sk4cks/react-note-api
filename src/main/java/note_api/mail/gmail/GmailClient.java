@@ -2,6 +2,7 @@ package note_api.mail.gmail;
 
 import note_api.common.exception.ApiException;
 import note_api.common.exception.ErrorCode;
+import note_api.common.util.KoreanTextMatcher;
 import note_api.mail.MailMimeFactory;
 import note_api.mail.dto.MailAttachmentContent;
 import note_api.mail.dto.MailAttachmentDto;
@@ -228,10 +229,7 @@ public class GmailClient {
                     continue;
                 }
                 String key = parsed.email().toLowerCase();
-                if (StringUtils.hasText(query)
-                        && !key.contains(query)
-                        && !(parsed.displayName() != null
-                                && parsed.displayName().toLowerCase().contains(query))) {
+                if (!KoreanTextMatcher.matches(query, parsed.displayName(), parsed.email())) {
                     continue;
                 }
                 byEmail.putIfAbsent(key, MailRecipientSuggestion.of(parsed.email(), parsed.displayName()));

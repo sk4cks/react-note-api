@@ -257,6 +257,22 @@ class AuthServerClientTest {
   }
 
   @Test
+  void suggestContacts_encodesKoreanQueryOnce() {
+    server
+        .expect(
+            requestTo(
+                AUTH_SERVER_BASE_URL + "/auth/users/sk4cks/contacts/suggest?q=%EA%B9%80"))
+        .andExpect(method(HttpMethod.GET))
+        .andExpect(header("X-Internal-Api-Key", INTERNAL_API_KEY))
+        .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+
+    var items = authServerClient.suggestContacts("sk4cks", "김");
+
+    assertThat(items).isEmpty();
+    server.verify();
+  }
+
+  @Test
   void fetchMailboxCredentials_sendsInternalHeaderAndReturnsBody() {
     server
         .expect(requestTo(AUTH_SERVER_BASE_URL + "/auth/users/sk4cks/mailbox"))
