@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+/** 프론트 메일 API — 목록·상세·첨부·발송·폴더 건수. */
 @RestController
 @RequestMapping("/api/mail")
 @RequiredArgsConstructor
@@ -31,16 +32,19 @@ public class MailController {
 
     private final MailService mailService;
 
+    /** 폴더 메일 목록. */
     @GetMapping("/messages")
     public MailMessageListDto listMessages(@AuthenticationPrincipal Jwt jwt, @RequestParam(defaultValue = "inbox") String folder, @RequestParam(required = false) String pageToken) {
         return mailService.listMessages(jwt.getSubject(), folder, pageToken);
     }
 
+    /** 메일 한 통. IMAP은 folder가 필요하다. */
     @GetMapping("/messages/{id}")
     public MailMessageDetailDto getMessage(@AuthenticationPrincipal Jwt jwt, @PathVariable String id, @RequestParam(defaultValue = "inbox") String folder) {
         return mailService.getMessage(jwt.getSubject(), folder, id);
     }
 
+    /** 첨부 다운로드. */
     @GetMapping("/messages/{id}/attachments/{attachmentId}")
     public ResponseEntity<byte[]> getAttachment(@AuthenticationPrincipal Jwt jwt, @PathVariable String id, @PathVariable String attachmentId, @RequestParam(defaultValue = "inbox") String folder) {
         MailAttachmentContent attachment =
@@ -55,11 +59,13 @@ public class MailController {
                 .body(attachment.content());
     }
 
+    /** 편지함 건수(뱃지). */
     @GetMapping("/folders")
     public List<MailFolderDto> getFolders(@AuthenticationPrincipal Jwt jwt) {
         return mailService.getFolderStats(jwt.getSubject());
     }
 
+    /** 메일 발송. */
     @PostMapping("/send")
     public void sendMail(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody SendMailRequest request) {
         mailService.sendMessage(jwt.getSubject(), request);

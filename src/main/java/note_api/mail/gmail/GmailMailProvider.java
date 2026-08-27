@@ -41,10 +41,8 @@ public class GmailMailProvider implements MailProvider {
      */
     @Override
     public MailMessageListDto listMessages(String userId, String folder, String pageToken) {
-        String googleToken = authServerClient.fetchGoogleAccessToken(userId);
-
         return gmailClient.listMessages(
-                googleToken, folder, GmailApiConstants.DEFAULT_LIST_MAX_RESULTS, pageToken);
+                googleToken(userId), folder, GmailApiConstants.DEFAULT_LIST_MAX_RESULTS, pageToken);
     }
 
     /**
@@ -59,13 +57,13 @@ public class GmailMailProvider implements MailProvider {
      */
     @Override
     public MailMessageDetailDto getMessage(String userId, String folder, String messageId) {
-        String googleToken = authServerClient.fetchGoogleAccessToken(userId);
-        MailMessageDetailDto detail = gmailClient.getMessage(googleToken, messageId);
+        String token = googleToken(userId);
+        MailMessageDetailDto detail = gmailClient.getMessage(token, messageId);
         if (!detail.unread()) {
             return detail;
         }
         try {
-            gmailClient.markThreadAsRead(googleToken, detail.threadId());
+            gmailClient.markThreadAsRead(token, detail.threadId());
 
         } catch (RuntimeException ex) {
             log.warn("Failed to mark thread as read: {}", detail.threadId(), ex);
@@ -84,9 +82,7 @@ public class GmailMailProvider implements MailProvider {
     @Override
     public MailAttachmentContent getAttachment(
             String userId, String folder, String messageId, String attachmentId) {
-        String googleToken = authServerClient.fetchGoogleAccessToken(userId);
-
-        return gmailClient.getAttachment(googleToken, messageId, attachmentId);
+        return gmailClient.getAttachment(googleToken(userId), messageId, attachmentId);
     }
 
     /**
@@ -97,8 +93,7 @@ public class GmailMailProvider implements MailProvider {
      */
     @Override
     public void sendMessage(String userId, SendMailRequest request) {
-        String googleToken = authServerClient.fetchGoogleAccessToken(userId);
-        gmailClient.sendMessage(googleToken, request);
+        gmailClient.sendMessage(googleToken(userId), request);
     }
 
     /**
@@ -110,15 +105,17 @@ public class GmailMailProvider implements MailProvider {
      */
     @Override
     public List<MailFolderDto> getFolderStats(String userId) {
-        String googleToken = authServerClient.fetchGoogleAccessToken(userId);
-
-        return gmailClient.getFolderStats(googleToken);
+        return gmailClient.getFolderStats(googleToken(userId));
     }
 
+    /** 최근 메일에서 수신자 후보 — query가 있으면 한글 초성 매칭. */
     @Override
     public List<MailRecipientSuggestion> suggestRecipients(String userId, String query) {
-        String googleToken = authServerClient.fetchGoogleAccessToken(userId);
+        return gmailClient.suggestRecipients(googleToken(userId), query);
+    }
 
-        return gmailClient.suggestRecipients(googleToken, query);
+    /** Auth에 저장된 Google access token. 미연동이면 MAIL_GOOGLE_NOT_LINKED. */
+    private String googleToken(String userId) {
+        return authServerClient.fetchGoogleAccessToken(userId);
     }
 }

@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.HashMap;
 import java.util.Map;
 
+/** 로그인 사용자 정보. JWT claim만 돌려준다. */
 @RestController
 @RequestMapping("/api")
 public class MeController {

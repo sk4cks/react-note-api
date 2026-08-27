@@ -9,6 +9,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+/** JWT 리소스 서버 + CORS. /api/auth/** 는 로그인 전 허용. */
 @Configuration
 public class SecurityConfig {
 
@@ -18,6 +19,7 @@ public class SecurityConfig {
         this.corsProperties = corsProperties;
     }
 
+    /** JWT 검증. 온보딩·소셜 complete만 인증 필요, 나머지 /api/auth는 permitAll. */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
@@ -34,11 +36,12 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /** 프론트 origin만. credentials 허용(refresh cookie). */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(corsProperties.allowedOrigins());
-        configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(java.util.List.of("GET", "POST", "OPTIONS"));
         configuration.setAllowedHeaders(java.util.List.of("*"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);

@@ -11,11 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -28,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+/** 주소록·그룹·공유. Auth Server 내부 API를 프록시하고, 수신자 제안은 메일 히스토리와 합친다. */
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -48,7 +47,7 @@ public class ContactController {
         return authServerClient.createContact(jwt.getSubject(), body);
     }
 
-    @DeleteMapping("/contacts/{id}")
+    @PostMapping("/contacts/{id}/delete")
     public ResponseEntity<Void> deleteContact(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
         authServerClient.deleteContact(jwt.getSubject(), id);
 
@@ -66,7 +65,7 @@ public class ContactController {
         return authServerClient.createContactGroup(jwt.getSubject(), body);
     }
 
-    @PutMapping("/contact-groups/{id}")
+    @PostMapping("/contact-groups/{id}/update")
     public ContactGroupResponse renameGroup(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long id,
@@ -74,14 +73,14 @@ public class ContactController {
         return authServerClient.updateContactGroup(jwt.getSubject(), id, body);
     }
 
-    @DeleteMapping("/contact-groups/{id}")
+    @PostMapping("/contact-groups/{id}/delete")
     public ResponseEntity<Void> deleteGroup(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
         authServerClient.deleteContactGroup(jwt.getSubject(), id);
 
         return ResponseEntity.noContent().build();
     }
 
-    @PutMapping("/contact-groups/{id}/members")
+    @PostMapping("/contact-groups/{id}/members")
     public ContactGroupResponse replaceMembers(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long id,
@@ -103,7 +102,7 @@ public class ContactController {
         return authServerClient.shareContactGroup(jwt.getSubject(), id, body);
     }
 
-    @DeleteMapping("/contact-groups/{id}/shares/{shareId}")
+    @PostMapping("/contact-groups/{id}/shares/{shareId}/delete")
     public ResponseEntity<Void> revokeShare(
             @AuthenticationPrincipal Jwt jwt, @PathVariable Long id, @PathVariable Long shareId) {
         authServerClient.revokeContactGroupShare(jwt.getSubject(), id, shareId);

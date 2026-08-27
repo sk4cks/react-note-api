@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 
+/** 프론트 인증 API. refresh_token은 HttpOnly cookie, access_token만 JSON. */
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -38,14 +39,15 @@ public class AuthController {
         this.refreshTokenCookieService = refreshTokenCookieService;
     }
 
+    /** 로컬 로그인. refresh는 cookie, body에는 access만. */
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(@RequestBody LoginRequest request, HttpServletResponse response) {
         TokenResponse tokens = authService.login(request);
-        refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
 
-        return ResponseEntity.ok(withoutRefreshToken(tokens));
+        return okWithRefreshCookie(tokens, response);
     }
 
+    /** 로컬 회원가입. 토큰은 없고 이후 /login. */
     @PostMapping("/register")
     public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         UserResponse user = authService.register(request);
@@ -69,22 +71,22 @@ public class AuthController {
     @PostMapping("/social/complete")
     public ResponseEntity<TokenResponse> completeSocial(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody SocialCompleteRequest request, HttpServletResponse response) {
         TokenResponse tokens = authService.completeSocialOnboarding(jwt, request);
-        refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
 
-        return ResponseEntity.ok(withoutRefreshToken(tokens));
+        return okWithRefreshCookie(tokens, response);
     }
 
+    /** SNS 로그인 시작. 브라우저를 Auth public URL로 302. */
     @GetMapping("/social/prepare/{provider}")
     public void socialPrepare(@PathVariable String provider, @RequestParam String state, @RequestParam("code_challenge") String codeChallenge, @RequestParam("redirect_uri") String redirectUri, HttpServletResponse response) throws IOException {
         authService.redirectToSocialPrepare(provider, state, codeChallenge, redirectUri, response);
     }
 
+    /** SNS callback — authorization_code → 토큰. */
     @PostMapping("/token")
     public ResponseEntity<TokenResponse> token(@RequestBody TokenExchangeRequest request, HttpServletResponse response) {
         TokenResponse tokens = authService.exchangeToken(request);
-        refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
 
-        return ResponseEntity.ok(withoutRefreshToken(tokens));
+        return okWithRefreshCookie(tokens, response);
     }
 
     /** refresh_token은 HttpOnly cookie — body 없음 */
@@ -102,6 +104,7 @@ public class AuthController {
         return ResponseEntity.ok(withoutRefreshToken(tokens));
     }
 
+    /** refresh cookie 삭제. */
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletResponse response) {
         refreshTokenCookieService.clearRefreshToken(response);
@@ -109,6 +112,15 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
+    /** refresh를 cookie에 넣고 JSON에서는 뺀다. */
+    private ResponseEntity<TokenResponse> okWithRefreshCookie(
+            TokenResponse tokens, HttpServletResponse response) {
+        refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
+
+        return ResponseEntity.ok(withoutRefreshToken(tokens));
+    }
+
+    /** JSON에 refresh_token을 넣지 않는다. cookie로만 준다. */
     private static TokenResponse withoutRefreshToken(TokenResponse tokens) {
         return new TokenResponse(
                 tokens.accessToken(),

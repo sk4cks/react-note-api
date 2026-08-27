@@ -11,7 +11,6 @@ import note_api.auth.dto.UserResponse;
 import note_api.common.exception.AuthServerException;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -19,6 +18,7 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.util.function.Supplier;
 
 /**
  * BFF 인증 유스케이스 — 프론트는 이 서비스(경유 Controller)만 호출하고, Auth Server는 {@link AuthServerClient}로만 접근한다.
@@ -45,35 +45,14 @@ public class AuthService {
      * 컨트롤러가 refresh를 cookie에 넣고 body에서는 제거한다.
      */
     public TokenResponse login(LoginRequest request) {
-        try {
-            ResponseEntity<TokenResponse> response = authServerClient.login(request);
-            TokenResponse body = response.getBody();
-            if (body == null) {
-                throw new IllegalStateException("Login failed: empty response from auth server");
-            }
-
-            return body;
-
-        } catch (HttpStatusCodeException ex) {
-            throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
-        }
+        return requireAuthBody(() -> authServerClient.login(request).getBody(), "Login");
     }
 
     /**
      * 아이디 중복 확인 — Auth Server {@code GET /auth/check-userid}.
      */
     public UserIdAvailabilityResponse checkUserId(String userId) {
-        try {
-            UserIdAvailabilityResponse body = authServerClient.checkUserId(userId);
-            if (body == null) {
-                throw new IllegalStateException("Check userId failed: empty response from auth server");
-            }
-
-            return body;
-
-        } catch (HttpStatusCodeException ex) {
-            throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
-        }
+        return requireAuthBody(() -> authServerClient.checkUserId(userId), "Check userId");
     }
 
     /**
@@ -83,18 +62,7 @@ public class AuthService {
      * 중복 userId 등은 Auth의 409를 {@link AuthServerException}으로 전파.
      */
     public UserResponse register(RegisterRequest request) {
-        try {
-            ResponseEntity<UserResponse> response = authServerClient.register(request);
-            UserResponse body = response.getBody();
-            if (body == null) {
-                throw new IllegalStateException("Register failed: empty response from auth server");
-            }
-
-            return body;
-
-        } catch (HttpStatusCodeException ex) {
-            throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
-        }
+        return requireAuthBody(() -> authServerClient.register(request).getBody(), "Register");
     }
 
     /**
@@ -134,19 +102,17 @@ public class AuthService {
         if (!StringUtils.hasText(snsProvider) || !StringUtils.hasText(snsExternalId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "SNS claims missing in token");
         }
-        try {
-            ResponseEntity<TokenResponse> response = authServerClient.completeSocialRegistration(
-                    snsProvider, snsExternalId, snsExternalEmail, request.userId());
-            TokenResponse body = response.getBody();
-            if (body == null || !StringUtils.hasText(body.accessToken())) {
-                throw new IllegalStateException("Social register failed: empty response from auth server");
-            }
-
-            return body;
-
-        } catch (HttpStatusCodeException ex) {
-            throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
+        TokenResponse body = requireAuthBody(
+                () -> authServerClient
+                        .completeSocialRegistration(
+                                snsProvider, snsExternalId, snsExternalEmail, request.userId())
+                        .getBody(),
+                "Social register");
+        if (!StringUtils.hasText(body.accessToken())) {
+            throw new IllegalStateException("Social register failed: empty response from auth server");
         }
+
+        return body;
     }
 
     /**
@@ -169,18 +135,8 @@ public class AuthService {
      * Auth Server {@code POST /oauth2/token} (grant_type=authorization_code).
      */
     public TokenResponse exchangeToken(TokenExchangeRequest request) {
-        try {
-            ResponseEntity<TokenResponse> response = authServerClient.exchangeAuthorizationCode(request);
-            TokenResponse body = response.getBody();
-            if (body == null) {
-                throw new IllegalStateException("Token exchange failed: empty response from auth server");
-            }
-
-            return body;
-
-        } catch (HttpStatusCodeException ex) {
-            throw new IllegalStateException("Token exchange failed: " + ex.getResponseBodyAsString(), ex);
-        }
+        return requireOauthBody(
+                () -> authServerClient.exchangeAuthorizationCode(request).getBody(), "Token exchange");
     }
 
     /**
@@ -189,17 +145,36 @@ public class AuthService {
      * Auth Server {@code POST /oauth2/token} (grant_type=refresh_token).
      */
     public TokenResponse refreshToken(String refreshToken) {
+        return requireOauthBody(() -> authServerClient.refreshToken(refreshToken).getBody(), "Token refresh");
+    }
+
+    /** login/register 등 Auth public API. 4xx는 status+body를 그대로 넘긴다. */
+    private <T> T requireAuthBody(Supplier<T> call, String action) {
         try {
-            ResponseEntity<TokenResponse> response = authServerClient.refreshToken(refreshToken);
-            TokenResponse body = response.getBody();
+            T body = call.get();
             if (body == null) {
-                throw new IllegalStateException("Token refresh failed: empty response from auth server");
+                throw new IllegalStateException(action + " failed: empty response from auth server");
             }
 
             return body;
 
         } catch (HttpStatusCodeException ex) {
-            throw new IllegalStateException("Token refresh failed: " + ex.getResponseBodyAsString(), ex);
+            throw new AuthServerException(ex.getStatusCode(), ex.getResponseBodyAsString());
+        }
+    }
+
+    /** /oauth2/token. 4xx는 IllegalStateException으로 감싼다. */
+    private <T> T requireOauthBody(Supplier<T> call, String action) {
+        try {
+            T body = call.get();
+            if (body == null) {
+                throw new IllegalStateException(action + " failed: empty response from auth server");
+            }
+
+            return body;
+
+        } catch (HttpStatusCodeException ex) {
+            throw new IllegalStateException(action + " failed: " + ex.getResponseBodyAsString(), ex);
         }
     }
 }

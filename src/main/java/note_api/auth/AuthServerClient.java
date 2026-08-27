@@ -10,6 +10,10 @@ import note_api.auth.dto.UserIdAvailabilityResponse;
 import note_api.auth.dto.UserResponse;
 import note_api.common.exception.ApiException;
 import note_api.common.exception.ErrorCode;
+import note_api.contact.dto.ContactGroupResponse;
+import note_api.contact.dto.ContactGroupShareResponse;
+import note_api.contact.dto.ContactResponse;
+import note_api.contact.dto.RecipientSuggestItem;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -38,7 +42,7 @@ import java.util.Map;
  *   <li>{@code auth-server.base-url} — Pod/서버 간 호출 (로컬: localhost:9000, k8s: ClusterIP)</li>
  *   <li>{@code auth-server.public-url} — 브라우저 redirect 용 (nip.io 등 외부 URL)</li>
  * </ul>
- * Internal API({@code X-Internal-Api-Key})는 SNS 상태/등록, Gmail 토큰 조회에만 사용한다.
+ * Internal API({@code X-Internal-Api-Key})는 SNS·Gmail 토큰·메일함·주소록에 사용한다.
  * login/register/token 은 Auth의 public {@code /auth/**}, {@code /oauth2/token} 경로.
  */
 @Component
@@ -76,14 +80,9 @@ public class AuthServerClient {
      * 아이디 사용 가능 여부 — {@code GET /auth/check-userid}.
      */
     public UserIdAvailabilityResponse checkUserId(String userId) {
-        String url = UriComponentsBuilder
-                .fromUriString(authServerBaseUrl + "/auth/check-userid")
-                .queryParam("userId", userId)
-                .build()
-                .encode(StandardCharsets.UTF_8)
-                .toUriString();
-
-        return restTemplate.getForObject(url, UserIdAvailabilityResponse.class);
+        return restTemplate.getForObject(
+                encodedQueryUrl(authServerBaseUrl + "/auth/check-userid", "userId", userId),
+                UserIdAvailabilityResponse.class);
     }
 
     /**
@@ -93,13 +92,14 @@ public class AuthServerClient {
      */
     public String buildSocialPrepareRedirectUrl(
             String provider, String state, String codeChallenge, String redirectUri) {
-        return UriComponentsBuilder.fromUriString(authServerPublicUrl + "/auth/social/prepare/" + provider)
-                .queryParam("state", state)
-                .queryParam("code_challenge", codeChallenge)
-                .queryParam("redirect_uri", redirectUri)
-                .build()
-                .encode(StandardCharsets.UTF_8)
-                .toUriString();
+        return encodedQueryUrl(
+                authServerPublicUrl + "/auth/social/prepare/" + provider,
+                "state",
+                state,
+                "code_challenge",
+                codeChallenge,
+                "redirect_uri",
+                redirectUri);
     }
 
     /**
@@ -107,11 +107,8 @@ public class AuthServerClient {
      * 응답에 access_token + refresh_token 포함.
      */
     public ResponseEntity<TokenResponse> login(LoginRequest request) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<LoginRequest> entity = new HttpEntity<>(request, headers);
-
-        return restTemplate.postForEntity(loginUrl, entity, TokenResponse.class);
+        return restTemplate.postForEntity(
+                loginUrl, new HttpEntity<>(request, jsonHeaders()), TokenResponse.class);
     }
 
     /**
@@ -119,11 +116,8 @@ public class AuthServerClient {
      * Auth Server가 SYS_USER INSERT 후 UserResponse 반환 (토큰 없음).
      */
     public ResponseEntity<UserResponse> register(RegisterRequest request) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<RegisterRequest> entity = new HttpEntity<>(request, headers);
-
-        return restTemplate.postForEntity(registerUrl, entity, UserResponse.class);
+        return restTemplate.postForEntity(
+                registerUrl, new HttpEntity<>(request, jsonHeaders()), UserResponse.class);
     }
 
     /**
@@ -131,20 +125,15 @@ public class AuthServerClient {
      * JWT {@code sns_provider}/{@code sns_external_id} 로 AUTH_PROVIDER+EXTERNAL_ID 조회.
      */
     public SocialUserStatus getSocialUserStatus(String provider, String externalId) {
-        String url = UriComponentsBuilder
-                .fromUriString(authServerBaseUrl + "/auth/social/users/status")
-                .queryParam("provider", provider)
-                .queryParam("externalId", externalId)
-                .build()
-                .encode(StandardCharsets.UTF_8)
-                .toUriString();
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Internal-Api-Key", internalApiKey);
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
+        String url = encodedQueryUrl(
+                authServerBaseUrl + "/auth/social/users/status",
+                "provider",
+                provider,
+                "externalId",
+                externalId);
 
         ResponseEntity<SocialUserStatusResponse> response = restTemplate.exchange(
-                url, HttpMethod.GET, entity, SocialUserStatusResponse.class);
+                url, HttpMethod.GET, new HttpEntity<>(internalHeaders()), SocialUserStatusResponse.class);
         SocialUserStatusResponse body = response.getBody();
         if (body == null) {
             return new SocialUserStatus(false, null);
@@ -162,20 +151,17 @@ public class AuthServerClient {
      */
     public ResponseEntity<TokenResponse> completeSocialRegistration(
             String provider, String externalId, String externalEmail, String userId) {
-        String url = authServerBaseUrl + "/auth/social/register";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Internal-Api-Key", internalApiKey);
-
         Map<String, String> body = Map.of(
                 "provider", provider,
                 "externalId", externalId,
                 "externalEmail", externalEmail != null ? externalEmail : "",
                 "userId", userId);
-        HttpEntity<Map<String, String>> entity = new HttpEntity<>(body, headers);
 
-        return restTemplate.exchange(url, HttpMethod.POST, entity, TokenResponse.class);
+        return restTemplate.exchange(
+                authServerBaseUrl + "/auth/social/register",
+                HttpMethod.POST,
+                new HttpEntity<>(body, internalHeaders()),
+                TokenResponse.class);
     }
 
     /**
@@ -191,11 +177,7 @@ public class AuthServerClient {
         form.add("client_id", clientId);
         form.add("client_secret", clientSecret);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(form, headers);
-
-        return restTemplate.postForEntity(tokenUri, entity, TokenResponse.class);
+        return postToken(form);
     }
 
     /**
@@ -209,11 +191,7 @@ public class AuthServerClient {
         form.add("client_id", clientId);
         form.add("client_secret", clientSecret);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(form, headers);
-
-        return restTemplate.postForEntity(tokenUri, entity, TokenResponse.class);
+        return postToken(form);
     }
 
     /**
@@ -222,20 +200,15 @@ public class AuthServerClient {
      * 404 이면 Google/Gmail 미연동 → {@link ApiException}({@link ErrorCode#MAIL_GOOGLE_NOT_LINKED}).
      */
     public String fetchGoogleAccessToken(String principal) {
-        String url = UriComponentsBuilder
-                .fromUriString(authServerBaseUrl + "/auth/google/access-token")
-                .queryParam("principal", principal)
-                .build()
-                .encode(StandardCharsets.UTF_8)
-                .toUriString();
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Internal-Api-Key", internalApiKey);
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
+        String url = encodedQueryUrl(
+                authServerBaseUrl + "/auth/google/access-token", "principal", principal);
 
         try {
             ResponseEntity<Map<String, String>> response = restTemplate.exchange(
-                    url, HttpMethod.GET, entity, new ParameterizedTypeReference<>() {});
+                    url,
+                    HttpMethod.GET,
+                    new HttpEntity<>(internalHeaders()),
+                    new ParameterizedTypeReference<>() {});
             Map<String, String> body = response.getBody();
             String accessToken = body != null ? body.get("accessToken") : null;
             if (!StringUtils.hasText(accessToken)) {
@@ -254,15 +227,12 @@ public class AuthServerClient {
      * 404 이면 메일함 비밀번호 미저장 또는 사용자 없음 → {@link ApiException}({@link ErrorCode#MAIL_MAILBOX_NOT_FOUND}).
      */
     public MailboxCredentialsResponse fetchMailboxCredentials(String userId) {
-        String url = authServerBaseUrl + "/auth/users/" + userId + "/mailbox";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Internal-Api-Key", internalApiKey);
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
-
         try {
             ResponseEntity<MailboxCredentialsResponse> response = restTemplate.exchange(
-                    url, HttpMethod.GET, entity, MailboxCredentialsResponse.class);
+                    userPath(userId, "/mailbox"),
+                    HttpMethod.GET,
+                    new HttpEntity<>(internalHeaders()),
+                    MailboxCredentialsResponse.class);
 
             MailboxCredentialsResponse body = response.getBody();
 
@@ -277,6 +247,87 @@ public class AuthServerClient {
         }
     }
 
+    /** 개인 연락처 목록 — {@code GET /auth/users/{userId}/contacts}. */
+    public List<ContactResponse> listContacts(String userId, String q) {
+        return getList(userQueryUri(userId, "/contacts", q), new ParameterizedTypeReference<>() {});
+    }
+
+    /** 개인 연락처 추가 — {@code POST /auth/users/{userId}/contacts}. */
+    public ContactResponse createContact(String userId, Map<String, Object> body) {
+        return exchange(userUri(userId, "/contacts"), HttpMethod.POST, body, ContactResponse.class);
+    }
+
+    /** 개인 연락처 삭제 — {@code POST /auth/users/{userId}/contacts/{id}/delete}. */
+    public void deleteContact(String userId, Long contactId) {
+        exchange(userUri(userId, "/contacts/" + contactId + "/delete"), HttpMethod.POST, null, Void.class);
+    }
+
+    /** 주소록 자동완성 — {@code GET /auth/users/{userId}/contacts/suggest}. */
+    public List<RecipientSuggestItem> suggestContacts(String userId, String q) {
+        return getList(userQueryUri(userId, "/contacts/suggest", q), new ParameterizedTypeReference<>() {});
+    }
+
+    /** 그룹 목록 — {@code GET /auth/users/{userId}/contact-groups}. */
+    public List<ContactGroupResponse> listContactGroups(String userId) {
+        return getList(userUri(userId, "/contact-groups"), new ParameterizedTypeReference<>() {});
+    }
+
+    /** 그룹 생성 — {@code POST /auth/users/{userId}/contact-groups}. */
+    public ContactGroupResponse createContactGroup(String userId, Map<String, Object> body) {
+        return exchange(userUri(userId, "/contact-groups"), HttpMethod.POST, body, ContactGroupResponse.class);
+    }
+
+    /** 그룹 이름 변경 — {@code POST /auth/users/{userId}/contact-groups/{id}/update}. */
+    public ContactGroupResponse updateContactGroup(String userId, Long groupId, Map<String, Object> body) {
+        return exchange(
+                userUri(userId, "/contact-groups/" + groupId + "/update"),
+                HttpMethod.POST,
+                body,
+                ContactGroupResponse.class);
+    }
+
+    /** 그룹 삭제 — {@code POST /auth/users/{userId}/contact-groups/{id}/delete}. */
+    public void deleteContactGroup(String userId, Long groupId) {
+        exchange(userUri(userId, "/contact-groups/" + groupId + "/delete"), HttpMethod.POST, null, Void.class);
+    }
+
+    /** 그룹 멤버 통째 교체 — {@code POST /auth/users/{userId}/contact-groups/{id}/members}. */
+    public ContactGroupResponse replaceContactGroupMembers(
+            String userId, Long groupId, Map<String, Object> body) {
+        return exchange(
+                userUri(userId, "/contact-groups/" + groupId + "/members"),
+                HttpMethod.POST,
+                body,
+                ContactGroupResponse.class);
+    }
+
+    /** 그룹 공유 목록 — {@code GET /auth/users/{userId}/contact-groups/{id}/shares}. */
+    public List<ContactGroupShareResponse> listContactGroupShares(String userId, Long groupId) {
+        return getList(
+                userUri(userId, "/contact-groups/" + groupId + "/shares"),
+                new ParameterizedTypeReference<>() {});
+    }
+
+    /** 그룹 공유 — {@code POST /auth/users/{userId}/contact-groups/{id}/shares}. */
+    public ContactGroupShareResponse shareContactGroup(
+            String userId, Long groupId, Map<String, Object> body) {
+        return exchange(
+                userUri(userId, "/contact-groups/" + groupId + "/shares"),
+                HttpMethod.POST,
+                body,
+                ContactGroupShareResponse.class);
+    }
+
+    /** 그룹 공유 해제 — {@code POST /auth/users/{userId}/contact-groups/{id}/shares/{shareId}/delete}. */
+    public void revokeContactGroupShare(String userId, Long groupId, Long shareId) {
+        exchange(
+                userUri(userId, "/contact-groups/" + groupId + "/shares/" + shareId + "/delete"),
+                HttpMethod.POST,
+                null,
+                Void.class);
+    }
+
+    /** Internal API 공통 헤더. */
     private HttpHeaders internalHeaders() {
         HttpHeaders headers = new HttpHeaders();
         headers.set("X-Internal-Api-Key", internalApiKey);
@@ -286,11 +337,20 @@ public class AuthServerClient {
         return headers;
     }
 
+    /** {@code /auth/users/{userId} + suffix}. */
     private String userPath(String userId, String suffix) {
         return authServerBaseUrl + "/auth/users/" + userId + suffix;
     }
 
-    /** RestTemplate.exchange(String)은 Hangul을 한 번 더 인코딩하므로 URI를 넘긴다. */
+    /** 쿼리 없는 사용자 경로 URI. */
+    private URI userUri(String userId, String suffix) {
+        return URI.create(userPath(userId, suffix));
+    }
+
+    /**
+     * 검색어 q를 한 번만 인코딩한 URI.
+     * RestTemplate.exchange(String)은 한글을 한 번 더 인코딩한다.
+     */
     private URI userQueryUri(String userId, String suffix, String q) {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(userPath(userId, suffix));
         if (StringUtils.hasText(q)) {
@@ -300,123 +360,47 @@ public class AuthServerClient {
         return builder.build().encode(StandardCharsets.UTF_8).toUri();
     }
 
-    public List<note_api.contact.dto.ContactResponse> listContacts(String userId, String q) {
-        ResponseEntity<List<note_api.contact.dto.ContactResponse>> response = restTemplate.exchange(
-                userQueryUri(userId, "/contacts", q),
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                new ParameterizedTypeReference<>() {});
-
-        return response.getBody() == null ? List.of() : response.getBody();
-    }
-
-    public note_api.contact.dto.ContactResponse createContact(String userId, Map<String, Object> body) {
-        return restTemplate
-                .exchange(
-                        userPath(userId, "/contacts"),
-                        HttpMethod.POST,
-                        new HttpEntity<>(body, internalHeaders()),
-                        note_api.contact.dto.ContactResponse.class)
+    /** GET 목록. 응답이 없으면 빈 리스트. */
+    private <T> List<T> getList(URI uri, ParameterizedTypeReference<List<T>> type) {
+        List<T> body = restTemplate
+                .exchange(uri, HttpMethod.GET, new HttpEntity<>(internalHeaders()), type)
                 .getBody();
+
+        return body == null ? List.of() : body;
     }
 
-    public void deleteContact(String userId, Long contactId) {
-        restTemplate.exchange(
-                userPath(userId, "/contacts/" + contactId),
-                HttpMethod.DELETE,
-                new HttpEntity<>(internalHeaders()),
-                Void.class);
+    /** POST. body가 없으면 헤더만 보낸다. */
+    private <T> T exchange(URI uri, HttpMethod method, Object body, Class<T> type) {
+        HttpEntity<?> entity = body == null
+                ? new HttpEntity<>(internalHeaders())
+                : new HttpEntity<>(body, internalHeaders());
+
+        return restTemplate.exchange(uri, method, entity, type).getBody();
     }
 
-    public List<note_api.contact.dto.RecipientSuggestItem> suggestContacts(String userId, String q) {
-        ResponseEntity<List<note_api.contact.dto.RecipientSuggestItem>> response = restTemplate.exchange(
-                userQueryUri(userId, "/contacts/suggest", q),
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                new ParameterizedTypeReference<>() {});
+    /** JSON POST (login/register). */
+    private HttpHeaders jsonHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
 
-        return response.getBody() == null ? List.of() : response.getBody();
+        return headers;
     }
 
-    public List<note_api.contact.dto.ContactGroupResponse> listContactGroups(String userId) {
-        ResponseEntity<List<note_api.contact.dto.ContactGroupResponse>> response = restTemplate.exchange(
-                userPath(userId, "/contact-groups"),
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                new ParameterizedTypeReference<>() {});
+    /** {@code /oauth2/token} form POST. */
+    private ResponseEntity<TokenResponse> postToken(MultiValueMap<String, String> form) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
-        return response.getBody() == null ? List.of() : response.getBody();
+        return restTemplate.postForEntity(tokenUri, new HttpEntity<>(form, headers), TokenResponse.class);
     }
 
-    public note_api.contact.dto.ContactGroupResponse createContactGroup(
-            String userId, Map<String, Object> body) {
-        return restTemplate
-                .exchange(
-                        userPath(userId, "/contact-groups"),
-                        HttpMethod.POST,
-                        new HttpEntity<>(body, internalHeaders()),
-                        note_api.contact.dto.ContactGroupResponse.class)
-                .getBody();
-    }
+    /** 쿼리 파라미터를 한 번만 인코딩한 URL. */
+    private String encodedQueryUrl(String url, String... keyValues) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url);
+        for (int i = 0; i < keyValues.length; i += 2) {
+            builder.queryParam(keyValues[i], keyValues[i + 1]);
+        }
 
-    public note_api.contact.dto.ContactGroupResponse updateContactGroup(
-            String userId, Long groupId, Map<String, Object> body) {
-        return restTemplate
-                .exchange(
-                        userPath(userId, "/contact-groups/" + groupId),
-                        HttpMethod.PUT,
-                        new HttpEntity<>(body, internalHeaders()),
-                        note_api.contact.dto.ContactGroupResponse.class)
-                .getBody();
-    }
-
-    public void deleteContactGroup(String userId, Long groupId) {
-        restTemplate.exchange(
-                userPath(userId, "/contact-groups/" + groupId),
-                HttpMethod.DELETE,
-                new HttpEntity<>(internalHeaders()),
-                Void.class);
-    }
-
-    public note_api.contact.dto.ContactGroupResponse replaceContactGroupMembers(
-            String userId, Long groupId, Map<String, Object> body) {
-        return restTemplate
-                .exchange(
-                        userPath(userId, "/contact-groups/" + groupId + "/members"),
-                        HttpMethod.PUT,
-                        new HttpEntity<>(body, internalHeaders()),
-                        note_api.contact.dto.ContactGroupResponse.class)
-                .getBody();
-    }
-
-    public List<note_api.contact.dto.ContactGroupShareResponse> listContactGroupShares(
-            String userId, Long groupId) {
-        ResponseEntity<List<note_api.contact.dto.ContactGroupShareResponse>> response =
-                restTemplate.exchange(
-                        userPath(userId, "/contact-groups/" + groupId + "/shares"),
-                        HttpMethod.GET,
-                        new HttpEntity<>(internalHeaders()),
-                        new ParameterizedTypeReference<>() {});
-
-        return response.getBody() == null ? List.of() : response.getBody();
-    }
-
-    public note_api.contact.dto.ContactGroupShareResponse shareContactGroup(
-            String userId, Long groupId, Map<String, Object> body) {
-        return restTemplate
-                .exchange(
-                        userPath(userId, "/contact-groups/" + groupId + "/shares"),
-                        HttpMethod.POST,
-                        new HttpEntity<>(body, internalHeaders()),
-                        note_api.contact.dto.ContactGroupShareResponse.class)
-                .getBody();
-    }
-
-    public void revokeContactGroupShare(String userId, Long groupId, Long shareId) {
-        restTemplate.exchange(
-                userPath(userId, "/contact-groups/" + groupId + "/shares/" + shareId),
-                HttpMethod.DELETE,
-                new HttpEntity<>(internalHeaders()),
-                Void.class);
+        return builder.build().encode(StandardCharsets.UTF_8).toUriString();
     }
 }
