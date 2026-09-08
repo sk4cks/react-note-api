@@ -51,6 +51,7 @@ public class GmailClient {
 
     public MailMessageListDto listMessages(
             String accessToken, String folder, int maxResults, String pageToken) {
+        // 받은편지함은 Primary만. 프로모션·소셜 탭은 빼 둔다.
         if (GmailApiConstants.FOLDER_INBOX.equals(folder)) {
             return listThreads(
                     accessToken,
@@ -75,20 +76,25 @@ public class GmailClient {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
                         GmailApiConstants.USERS_ME_BASE + "/threads")
                 .queryParam("maxResults", maxResults);
+
         if (StringUtils.hasText(query)) {
             builder.queryParam("q", query);
         }
+
         if (StringUtils.hasText(labelId)) {
             builder.queryParam("labelIds", labelId);
         }
+
         if (StringUtils.hasText(pageToken)) {
             builder.queryParam("pageToken", pageToken);
         }
+
         String listUrl = builder.build().toUriString();
 
         JsonNode listBody = exchange(accessToken, listUrl, HttpMethod.GET, null);
         JsonNode threads = listBody.path("threads");
         String nextPageToken = listBody.path("nextPageToken").asText(null);
+
         if (!StringUtils.hasText(nextPageToken)) {
             nextPageToken = null;
         }
@@ -97,13 +103,17 @@ public class GmailClient {
             return new MailMessageListDto(List.of(), nextPageToken);
         }
 
+        // 목록 API는 id만 준다. 제목·미리보기는 batch로 한 번에 받는다.
         List<String> threadIds = new ArrayList<>();
+
         for (JsonNode threadRef : threads) {
             String id = threadRef.path("id").asText(null);
+
             if (StringUtils.hasText(id)) {
                 threadIds.add(id);
             }
         }
+
         if (threadIds.isEmpty()) {
             return new MailMessageListDto(List.of(), nextPageToken);
         }
@@ -125,10 +135,12 @@ public class GmailClient {
     public MailAttachmentContent getAttachment(String accessToken, String messageId, String attachmentId) {
         MailAttachmentDto attachment =
                 messageParser.findAttachment(exchange(accessToken, messageUrl(messageId), HttpMethod.GET, null), attachmentId);
+
         if (attachment == null) {
             throw new ApiException(ErrorCode.MAIL_ATTACHMENT_NOT_FOUND, attachmentId);
         }
 
+        // 파일명·타입은 payload, 실제 바이트는 attachments API.
         String url = GmailApiConstants.USERS_ME_BASE
                 + "/messages/" + messageId + "/attachments/" + attachmentId;
         JsonNode body = exchange(accessToken, url, HttpMethod.GET, null);
@@ -145,6 +157,7 @@ public class GmailClient {
     }
 
     public void sendMessage(String accessToken, SendMailRequest request) {
+        // Gmail send는 RFC822 MIME을 base64url raw로 받는다.
         byte[] mimeBytes = MailMimeFactory.toRfc822Bytes(null, request);
         String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(mimeBytes);
 
@@ -157,6 +170,7 @@ public class GmailClient {
         List<String> labelIds = List.of(GmailApiConstants.LABEL_DRAFT);
         Map<String, JsonNode> labelsById = fetchLabelsBatch(accessToken, labelIds);
 
+        // 받은편지함 뱃지는 Primary unread 스레드 수.
         int inboxUnread =
                 countThreadsByQuery(accessToken, GmailApiConstants.QUERY_INBOX_PRIMARY_UNREAD);
 
@@ -184,22 +198,28 @@ public class GmailClient {
                 .queryParam("q", "in:inbox OR in:sent");
         JsonNode listBody = exchange(accessToken, builder.build().toUriString(), HttpMethod.GET, null);
         JsonNode messages = listBody.path("messages");
+
         if (!messages.isArray() || messages.isEmpty()) {
             return List.of();
         }
 
+        // From/To/Cc만 metadata로 받는다. 본문은 필요 없다.
         List<String> paths = new ArrayList<>();
+
         for (JsonNode message : messages) {
             String id = message.path("id").asText(null);
+
             if (StringUtils.hasText(id)) {
                 paths.add("/gmail/v1/users/me/messages/"
                         + id
                         + "?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc");
             }
         }
+
         List<JsonNode> bodies = postBatch(accessToken, paths);
         LinkedHashMap<String, MailRecipientSuggestion> byEmail = new LinkedHashMap<>();
         String q = query == null ? "" : query.trim().toLowerCase();
+
         for (JsonNode body : bodies) {
             collectHeaderAddresses(body.path("payload").path("headers"), byEmail, q);
         }
@@ -324,12 +344,15 @@ public class GmailClient {
     private List<JsonNode> postBatch(String accessToken, List<String> relativeGets) {
         String boundary = "batch_gmail_" + UUID.randomUUID();
         StringBuilder sb = new StringBuilder();
+
+        // multipart/mixed 안에 HTTP GET을 하나씩 넣는다.
         for (String path : relativeGets) {
             sb.append("--").append(boundary).append("\r\n");
             sb.append("Content-Type: application/http\r\n");
             sb.append("\r\n");
             sb.append("GET ").append(path).append("\r\n\r\n");
         }
+
         sb.append("--").append(boundary).append("--\r\n");
 
         HttpHeaders headers = new HttpHeaders();
@@ -364,11 +387,13 @@ public class GmailClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
         headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+
         if (body != null) {
             headers.setContentType(MediaType.APPLICATION_JSON);
         }
 
         HttpEntity<String> entity;
+
         try {
             entity = new HttpEntity<>(body == null ? null : objectMapper.writeValueAsString(body), headers);
 
@@ -378,9 +403,11 @@ public class GmailClient {
 
         ResponseEntity<String> response = restTemplate.exchange(url, method, entity, String.class);
         String responseBody = response.getBody();
+
         if (!StringUtils.hasText(responseBody)) {
             return objectMapper.nullNode();
         }
+
         try {
             return objectMapper.readTree(responseBody);
 

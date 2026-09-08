@@ -21,6 +21,7 @@ final class GmailMessageParser {
     /** thread 목록은 최신 message 하나를 대표 카드로 내려준다. */
     MailMessageSummaryDto toThreadSummary(String folder, JsonNode thread) {
         JsonNode latestMessage = findLatestMessage(thread.path("messages"));
+
         if (latestMessage == null) {
             return null;
         }
@@ -30,6 +31,7 @@ final class GmailMessageParser {
         ParsedFrom parsedFrom = parseFrom(headers.from());
         boolean unread = hasUnreadMessage(thread.path("messages"));
         String preview = thread.path("snippet").asText("");
+
         if (!StringUtils.hasText(preview)) {
             preview = latestMessage.path("snippet").asText("");
         }
@@ -89,6 +91,7 @@ final class GmailMessageParser {
     private static void collectAttachments(JsonNode part, List<MailAttachmentDto> out) {
         String filename = part.path("filename").asText("");
         String attachmentId = part.path("body").path("attachmentId").asText("");
+
         if (StringUtils.hasText(filename) && StringUtils.hasText(attachmentId)) {
             out.add(new MailAttachmentDto(
                     attachmentId,
@@ -98,6 +101,7 @@ final class GmailMessageParser {
 
             return;
         }
+
         for (JsonNode child : part.path("parts")) {
             collectAttachments(child, out);
         }
@@ -196,10 +200,13 @@ final class GmailMessageParser {
     /** HTML 본문 우선, 없으면 plain text, 둘 다 없으면 빈 문자열 */
     private static BodyContent extractBody(JsonNode payload) {
         String html = findBodyByMimeType(payload, GmailApiConstants.MIME_TEXT_HTML);
+
         if (StringUtils.hasText(html)) {
             return new BodyContent(html, GmailApiConstants.MIME_TEXT_HTML);
         }
+
         String plain = findBodyByMimeType(payload, GmailApiConstants.MIME_TEXT_PLAIN);
+
         if (StringUtils.hasText(plain)) {
             return new BodyContent(plain, GmailApiConstants.MIME_TEXT_PLAIN);
         }

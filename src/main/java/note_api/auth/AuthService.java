@@ -45,6 +45,7 @@ public class AuthService {
      * 컨트롤러가 refresh를 cookie에 넣고 body에서는 제거한다.
      */
     public TokenResponse login(LoginRequest request) {
+        // Auth Server POST /auth/login. refresh는 컨트롤러가 cookie로 뺀다.
         return requireAuthBody(() -> authServerClient.login(request).getBody(), "Login");
     }
 
@@ -77,13 +78,17 @@ public class AuthService {
     public OnboardingStatusResponse getOnboardingStatus(Jwt jwt) {
         String snsProvider = jwt.getClaimAsString("sns_provider");
         String snsExternalId = jwt.getClaimAsString("sns_external_id");
-        // SNS 브릿지로 발급된 토큰이 아니면 온보딩 불필요
+
+        // 아이디/비밀번호 로그인이면 sns_*가 없다. 온보딩 화면을 건너뛴다.
         if (!StringUtils.hasText(snsProvider) || !StringUtils.hasText(snsExternalId)) {
             return new OnboardingStatusResponse(false, jwt.getSubject());
         }
+
         AuthServerClient.SocialUserStatus status =
                 authServerClient.getSocialUserStatus(snsProvider, snsExternalId);
+
         if (!status.registered()) {
+            // SYS_USER가 아직 없다. 프론트가 /onboarding에서 userId를 고른다.
             return new OnboardingStatusResponse(true, null);
         }
 
@@ -99,15 +104,18 @@ public class AuthService {
         String snsProvider = jwt.getClaimAsString("sns_provider");
         String snsExternalId = jwt.getClaimAsString("sns_external_id");
         String snsExternalEmail = jwt.getClaimAsString("sns_external_email");
+
         if (!StringUtils.hasText(snsProvider) || !StringUtils.hasText(snsExternalId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "SNS claims missing in token");
         }
+
         TokenResponse body = requireAuthBody(
                 () -> authServerClient
                         .completeSocialRegistration(
                                 snsProvider, snsExternalId, snsExternalEmail, request.userId())
                         .getBody(),
                 "Social register");
+
         if (!StringUtils.hasText(body.accessToken())) {
             throw new IllegalStateException("Social register failed: empty response from auth server");
         }
@@ -135,6 +143,7 @@ public class AuthService {
      * Auth Server {@code POST /oauth2/token} (grant_type=authorization_code).
      */
     public TokenResponse exchangeToken(TokenExchangeRequest request) {
+        // SNS 콜백 code + PKCE verifier → access/refresh.
         return requireOauthBody(
                 () -> authServerClient.exchangeAuthorizationCode(request).getBody(), "Token exchange");
     }
@@ -145,6 +154,7 @@ public class AuthService {
      * Auth Server {@code POST /oauth2/token} (grant_type=refresh_token).
      */
     public TokenResponse refreshToken(String refreshToken) {
+        // cookie에서 읽은 refresh로 새 access를 받는다.
         return requireOauthBody(() -> authServerClient.refreshToken(refreshToken).getBody(), "Token refresh");
     }
 

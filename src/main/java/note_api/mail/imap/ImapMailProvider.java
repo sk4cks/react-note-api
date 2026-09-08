@@ -46,7 +46,7 @@ import java.util.Properties;
  * Mailcow IMAP/SMTP 기반 {@link note_api.mail.MailProvider}.
  * <p>
  * 웹메일 2단계: 자체 {@code userId@도메인} 메일함. BFF가 Gmail API 대신 Jakarta Mail로 접속한다.
- * {@code app.mail.provider=imap} (로컬 기본)일 때 {@link note_api.mail.MailService}가 이 빈을 사용한다.
+ * {@code app.mail.provider=imap} (로컬·k8s 기본)일 때 {@link note_api.mail.MailService}가 이 빈을 사용한다.
  * <p>
  * 자격은 Auth 내부 API {@code GET /auth/users/{userId}/mailbox} 로만 조회 (BFF→DB 직접 금지).
  * IMAPS 993 / SMTP STARTTLS 587. 로컬 self-signed·IP 접속은 SSL hostname 검증 비활성.
@@ -78,24 +78,31 @@ public class ImapMailProvider implements MailProvider {
     public MailMessageListDto listMessages(String userId, String folder, String pageToken) {
         MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
         int offset = parseOffset(pageToken);
+
         try (ImapSession session = openImap(creds)) {
             Folder imapFolder = openFolder(session.store(), folder, Folder.READ_ONLY);
+
             try {
                 int total = imapFolder.getMessageCount();
+
                 if (total == 0) {
                     return new MailMessageListDto(List.of(), null);
                 }
-                // newest first: messages[total] is newest
+
+                // IMAP 번호는 1..N이고 N이 최신이다. offset만큼 최신 쪽을 건너뛴다.
                 int end = total - offset;
+
                 if (end < 1) {
                     return new MailMessageListDto(List.of(), null);
                 }
+
                 int start = Math.max(1, end - DEFAULT_PAGE_SIZE + 1);
                 Message[] messages = imapFolder.getMessages(start, end);
                 UIDFolder uidFolder = (UIDFolder) imapFolder;
 
-                // getMessages 는 오래된→최신 순 → 역순으로 DTO
+                // getMessages는 오래된→최신. 화면은 최신이 위라서 뒤집는다.
                 List<MailMessageSummaryDto> summaries = new ArrayList<>(messages.length);
+
                 for (int i = messages.length - 1; i >= 0; i--) {
                     summaries.add(toSummary(messages[i], uidFolder, normalizeFolder(folder)));
                 }
@@ -104,6 +111,7 @@ public class ImapMailProvider implements MailProvider {
                 String nextPage = nextOffset < total ? String.valueOf(nextOffset) : null;
 
                 return new MailMessageListDto(summaries, nextPage);
+
             } finally {
                 closeQuietly(imapFolder);
             }
@@ -128,9 +136,11 @@ public class ImapMailProvider implements MailProvider {
     public MailMessageDetailDto getMessage(String userId, String folder, String messageId) {
         return withImapMessage(userId, folder, messageId, Folder.READ_WRITE, "get", (message, uidFolder) -> {
             MailMessageDetailDto detail = toDetail(message, uidFolder, normalizeFolder(folder));
+
             if (!detail.unread()) {
                 return detail;
             }
+
             try {
                 message.setFlag(Flags.Flag.SEEN, true);
 
@@ -176,10 +186,12 @@ public class ImapMailProvider implements MailProvider {
         long uid = parseUid(messageId);
         try (ImapSession session = openImap(creds)) {
             Folder imapFolder = openFolder(session.store(), folder, mode);
+
             try {
                 UIDFolder uidFolder = (UIDFolder) imapFolder;
 
                 return work.apply(requireMessage(uidFolder, uid, messageId), uidFolder);
+
             } finally {
                 closeQuietly(imapFolder);
             }
@@ -224,6 +236,7 @@ public class ImapMailProvider implements MailProvider {
             Date sentDate = new Date();
             message.setSentDate(sentDate);
             Transport.send(message);
+
             // Transport.send는 Bcc 헤더를 제거한다. Sent 보관본은 다시 만들어 보낸 사람이 보이게 한다.
             MimeMessage sentCopy = MailMimeFactory.create(smtpSession, creds.mailAddress(), request);
             sentCopy.setSentDate(sentDate);
@@ -241,9 +254,11 @@ public class ImapMailProvider implements MailProvider {
             throws MessagingException {
         try (ImapSession session = openImap(creds)) {
             Folder sent = openFolder(session.store(), "sent", Folder.READ_WRITE);
+
             try {
                 message.setFlag(Flags.Flag.SEEN, true);
                 sent.appendMessages(new Message[] {message});
+
             } finally {
                 closeQuietly(sent);
             }
@@ -283,13 +298,18 @@ public class ImapMailProvider implements MailProvider {
         MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
         String self = creds.mailAddress() == null ? "" : creds.mailAddress().toLowerCase(Locale.ROOT);
         LinkedHashMap<String, MailRecipientSuggestion> byEmail = new LinkedHashMap<>();
+
         try (ImapSession session = openImap(creds)) {
+            // 받은·보낸 최근 메일에서 상대 주소를 모은다. 내 주소는 뺀다.
             collectRecipientsFromFolder(session.store(), "inbox", 50, self, byEmail);
             collectRecipientsFromFolder(session.store(), "sent", 50, self, byEmail);
+
         } catch (MessagingException ex) {
             throw new IllegalStateException("IMAP recipient suggest failed for user " + userId, ex);
         }
+
         String q = query == null ? "" : query.trim();
+
         return byEmail.values().stream()
                 .filter(item -> KoreanTextMatcher.matches(q, item.displayName(), item.email()))
                 .limit(20)
@@ -304,19 +324,24 @@ public class ImapMailProvider implements MailProvider {
             Map<String, MailRecipientSuggestion> byEmail)
             throws MessagingException {
         Folder imapFolder = openFolder(store, folder, Folder.READ_ONLY);
+
         try {
             int total = imapFolder.getMessageCount();
+
             if (total == 0) {
                 return;
             }
+
             int start = Math.max(1, total - limit + 1);
             Message[] messages = imapFolder.getMessages(start, total);
+
             for (int i = messages.length - 1; i >= 0; i--) {
                 Message message = messages[i];
                 addAddresses(message.getFrom(), selfEmail, byEmail);
                 addAddresses(message.getRecipients(Message.RecipientType.TO), selfEmail, byEmail);
                 addAddresses(message.getRecipients(Message.RecipientType.CC), selfEmail, byEmail);
             }
+
         } finally {
             closeQuietly(imapFolder);
         }
@@ -396,11 +421,13 @@ public class ImapMailProvider implements MailProvider {
     private static Folder openFolder(Store store, String folder, int mode) throws MessagingException {
         String name = toImapFolderName(folder);
         Folder imapFolder = store.getFolder(name);
+
         if (!imapFolder.exists()) {
             if ("INBOX".equals(name) || !imapFolder.create(Folder.HOLDS_MESSAGES)) {
                 throw new MessagingException("IMAP folder not found: " + name);
             }
         }
+
         imapFolder.open(mode);
 
         return imapFolder;
@@ -510,6 +537,7 @@ public class ImapMailProvider implements MailProvider {
                 formatAddresses(message.getRecipients(Message.RecipientType.BCC)),
                 message.getSubject() != null ? message.getSubject() : "(no subject)",
                 message.getSentDate(),
+                // SEEN이 없으면 안 읽은 메일.
                 !message.isSet(Flags.Flag.SEEN));
     }
 

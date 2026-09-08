@@ -21,10 +21,12 @@ public class MailService {
     private final MailProvider mailProvider;
 
     public MailService(
-            @Value("${app.mail.provider:gmail}") String provider,
+            @Value("${app.mail.provider:imap}") String provider,
             GmailMailProvider gmailMailProvider,
             ImapMailProvider imapMailProvider) {
-        String normalized = provider == null ? "gmail" : provider.trim().toLowerCase(Locale.ROOT);
+        String normalized = provider == null ? "imap" : provider.trim().toLowerCase(Locale.ROOT);
+
+        // 로컬·k8s 기본은 imap(Mailcow). MAIL_PROVIDER=gmail 이면 Gmail API.
         this.mailProvider = "imap".equals(normalized) ? imapMailProvider : gmailMailProvider;
     }
 

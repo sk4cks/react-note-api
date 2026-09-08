@@ -18,7 +18,7 @@ import java.util.List;
  * Gmail API 기반 {@link note_api.mail.MailProvider}.
  * <p>
  * 기존 {@link note_api.mail.MailService}가 직접 하던 Gmail 경로를 분리한 구현체.
- * {@code app.mail.provider=gmail} (k8s 기본)일 때 {@link note_api.mail.MailService}가 이 빈을 사용한다.
+ * {@code app.mail.provider=gmail} ({@code MAIL_PROVIDER=gmail})일 때 {@link note_api.mail.MailService}가 이 빈을 사용한다.
  * <p>
  * 공통 흐름: JWT {@code sub}(= userId) → Auth에서 Google access token → {@link GmailClient}.
  * Google 미연동(404)이면 {@link note_api.common.exception.ApiException}({@code MAIL_GOOGLE_NOT_LINKED}) → 프론트 FORBIDDEN.
@@ -59,9 +59,11 @@ public class GmailMailProvider implements MailProvider {
     public MailMessageDetailDto getMessage(String userId, String folder, String messageId) {
         String token = googleToken(userId);
         MailMessageDetailDto detail = gmailClient.getMessage(token, messageId);
+
         if (!detail.unread()) {
             return detail;
         }
+
         try {
             gmailClient.markThreadAsRead(token, detail.threadId());
 

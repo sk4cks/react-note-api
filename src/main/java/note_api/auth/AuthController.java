@@ -44,6 +44,7 @@ public class AuthController {
     public ResponseEntity<TokenResponse> login(@RequestBody LoginRequest request, HttpServletResponse response) {
         TokenResponse tokens = authService.login(request);
 
+        // refresh는 cookie, JSON에는 access만 남긴다.
         return okWithRefreshCookie(tokens, response);
     }
 
@@ -93,10 +94,14 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<TokenResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
         String refreshToken = refreshTokenCookieService.readRefreshToken(request);
+
         if (!StringUtils.hasText(refreshToken)) {
             return ResponseEntity.status(401).build();
         }
+
         TokenResponse tokens = authService.refreshToken(refreshToken);
+
+        // Auth가 새 refresh를 주면 cookie를 갈아끼운다.
         if (StringUtils.hasText(tokens.refreshToken())) {
             refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
         }

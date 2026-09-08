@@ -135,6 +135,7 @@ public class AuthServerClient {
         ResponseEntity<SocialUserStatusResponse> response = restTemplate.exchange(
                 url, HttpMethod.GET, new HttpEntity<>(internalHeaders()), SocialUserStatusResponse.class);
         SocialUserStatusResponse body = response.getBody();
+
         if (body == null) {
             return new SocialUserStatus(false, null);
         }
@@ -177,6 +178,7 @@ public class AuthServerClient {
         form.add("client_id", clientId);
         form.add("client_secret", clientSecret);
 
+        // Auth Server POST /oauth2/token. SPA는 이 BFF만 호출한다.
         return postToken(form);
     }
 
@@ -211,6 +213,7 @@ public class AuthServerClient {
                     new ParameterizedTypeReference<>() {});
             Map<String, String> body = response.getBody();
             String accessToken = body != null ? body.get("accessToken") : null;
+
             if (!StringUtils.hasText(accessToken)) {
                 throw new IllegalStateException("Google access token missing in auth server response");
             }

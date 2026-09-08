@@ -136,26 +136,31 @@ final class ImapMimeReader {
         private void walk(Part part, String path) throws MessagingException, IOException {
             if (part.isMimeType("multipart/*")) {
                 Multipart multipart = (Multipart) part.getContent();
+
                 for (int i = 0; i < multipart.getCount(); i++) {
                     walk(multipart.getBodyPart(i), path.isEmpty() ? String.valueOf(i) : path + "." + i);
                 }
 
                 return;
             }
+
             if (collectInlineImage(part)) {
                 return;
             }
+
             if (isAttachment(part)) {
                 attachments.add(new MailAttachmentDto(
                         path, filenameOf(part, fallbackFilename(part)), baseMimeType(part), decodedSizeOf(part)));
 
                 return;
             }
+
             if (html == null && part.isMimeType("text/html") && part.getContent() instanceof String text) {
                 html = text;
 
                 return;
             }
+
             if (plain == null && part.isMimeType("text/plain") && part.getContent() instanceof String text) {
                 plain = text;
             }
@@ -178,7 +183,9 @@ final class ImapMimeReader {
 
         private Content toContent() {
             String preview = StringUtils.hasText(plain) ? plain : stripTags(html);
+
             if (StringUtils.hasText(html)) {
+                // cid: 이미지를 data URL로 심은 HTML을 본문으로 쓴다.
                 return new Content(inlineCidUrls(html), "text/html", preview, List.copyOf(attachments));
             }
 

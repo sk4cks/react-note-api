@@ -35,9 +35,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ValidationErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new LinkedHashMap<>();
+
         for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
             errors.putIfAbsent(fieldError.getField(), fieldError.getDefaultMessage());
         }
+
         String message = errors.values().stream()
                 .findFirst()
                 .orElse("요청 값이 올바르지 않습니다");
@@ -61,6 +63,7 @@ public class GlobalExceptionHandler {
         body.put("error", resolved != null ? resolved.getReasonPhrase() : "Error");
         body.put("path", request.getRequestURI());
 
+        // Auth가 준 JSON의 code/message를 프론트가 그대로 쓰게 복사한다.
         if (StringUtils.hasText(ex.getResponseBody())) {
             try {
                 JsonNode node = objectMapper.readTree(ex.getResponseBody());

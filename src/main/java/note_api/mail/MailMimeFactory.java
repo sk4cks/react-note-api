@@ -45,30 +45,37 @@ public final class MailMimeFactory {
     public static MimeMessage create(Session session, String from, SendMailRequest request)
             throws MessagingException {
         MimeMessage message = new MimeMessage(session);
+
         if (StringUtils.hasText(from)) {
             message.setFrom(new InternetAddress(from));
         }
+
         setRecipients(message, Message.RecipientType.TO, request.to());
         setRecipients(message, Message.RecipientType.CC, request.cc());
         setRecipients(message, Message.RecipientType.BCC, request.bcc());
         message.setSubject(request.subject() != null ? request.subject() : "", "UTF-8");
 
+        // HTML 안의 data URL 이미지는 cid 인라인으로 바꾼다.
         InlineHtml inline = rewriteDataUrls(request.body() != null ? request.body() : "");
         List<DecodedAttachment> files = decodeAttachments(request.attachments());
+
         if (files.size() > MAX_ATTACHMENTS) {
             throw new ApiException(ErrorCode.MAIL_ATTACHMENT_TOO_MANY, MAX_ATTACHMENTS);
         }
 
         int totalBytes = inline.totalBytes();
+
         for (DecodedAttachment attachment : files) {
             totalBytes += attachment.bytes().length;
         }
+
         if (totalBytes > MAX_TOTAL_BYTES) {
             throw new ApiException(ErrorCode.MAIL_ATTACHMENT_TOO_LARGE, MAX_TOTAL_BYTES / (1024 * 1024));
         }
 
         boolean hasInline = !inline.parts().isEmpty();
         boolean hasFiles = !files.isEmpty();
+
         if (!hasInline && !hasFiles) {
             message.setContent(inline.html(), "text/html; charset=UTF-8");
 
@@ -76,12 +83,15 @@ public final class MailMimeFactory {
         }
 
         MimeBodyPart htmlPart = htmlBodyPart(inline.html());
+
         if (!hasFiles) {
+            // 인라인 이미지만 있으면 related 하나로 끝낸다.
             message.setContent(relatedMultipart(htmlPart, inline.parts()));
 
             return message;
         }
 
+        // 첨부가 있으면 mixed. 인라인 이미지는 related로 감싼다.
         MimeMultipart mixed = new MimeMultipart("mixed");
         if (hasInline) {
             MimeBodyPart relatedWrapper = new MimeBodyPart();
@@ -100,6 +110,7 @@ public final class MailMimeFactory {
         try {
             MimeMessage message = create(Session.getInstance(new Properties()), from, request);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
+            // Gmail raw send에 넣을 RFC822 바이트.
             message.writeTo(out);
 
             return out.toByteArray();
@@ -167,14 +178,17 @@ public final class MailMimeFactory {
         List<InlineImage> parts = new ArrayList<>();
         int index = 1;
         int totalBytes = 0;
+
         while (matcher.find()) {
             String mime = matcher.group(2).toLowerCase(Locale.ROOT);
             byte[] bytes = decodeBase64(matcher.group(3));
             totalBytes += bytes.length;
             String cid = "inline-img-" + index++ + "@note";
             parts.add(new InlineImage(cid, mime, bytes));
+            // <img src="data:..."> 를 cid 참조로 바꾼다.
             matcher.appendReplacement(rewritten, Matcher.quoteReplacement("src=\"cid:" + cid + "\""));
         }
+
         matcher.appendTail(rewritten);
 
         return new InlineHtml(rewritten.toString(), parts, totalBytes);

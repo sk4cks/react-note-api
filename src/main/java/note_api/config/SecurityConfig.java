@@ -22,14 +22,15 @@ public class SecurityConfig {
     /** JWT 검증. 온보딩·소셜 complete만 인증 필요, 나머지 /api/auth는 permitAll. */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-
         http.authorizeHttpRequests(request -> request
+                // SNS 온보딩은 임시 JWT가 있어야 한다.
                 .requestMatchers("/api/auth/onboarding-status", "/api/auth/social/complete").authenticated()
                 .requestMatchers("/api/auth/**", "/error").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll());
 
         http.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+        // 프론트가 JSON POST를 하므로 CSRF는 끈다. refresh는 SameSite cookie.
         http.csrf(csrf -> csrf.disable());
         http.cors(cors -> cors.configurationSource(corsConfigurationSource()));
 

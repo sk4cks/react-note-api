@@ -31,8 +31,10 @@ final class GmailBatchParser {
         }
 
         List<JsonNode> result = new ArrayList<>();
+
         if (StringUtils.hasText(boundary)) {
             String[] parts = responseBody.split("--" + Pattern.quote(boundary));
+
             for (String part : parts) {
                 parseJsonFromBatchPart(part).ifPresent(json -> {
                     try {
@@ -43,11 +45,13 @@ final class GmailBatchParser {
                     }
                 });
             }
+
             if (!result.isEmpty()) {
                 return result;
             }
         }
 
+        // boundary가 깨진 응답은 JSON object를 직접 스캔한다.
         return parseBatchJsonFallback(responseBody);
     }
 

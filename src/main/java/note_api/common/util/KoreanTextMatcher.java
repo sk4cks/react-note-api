@@ -41,14 +41,17 @@ public final class KoreanTextMatcher {
 
     public static boolean matches(String query, String... fields) {
         String needle = normalize(query);
+
         if (needle.isEmpty()) {
             return true;
         }
+
         for (String field : fields) {
             if (field != null && contains(needle, normalize(field))) {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -65,13 +68,17 @@ public final class KoreanTextMatcher {
         if (hay.contains(query)) {
             return true;
         }
+
+        // ㄱ / 기처럼 음절이 덜 된 입력은 자모 접두로 본다.
         List<String> hayJamo = jamoChars(hay);
         List<String> queryJamo = jamoChars(query);
+
         for (int start = 0; start < hayJamo.size(); start++) {
             if (matchFrom(queryJamo, hayJamo, start)) {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -100,10 +107,12 @@ public final class KoreanTextMatcher {
 
     private static String toJamo(int cp) {
         if (cp >= SYLLABLE_BASE && cp <= SYLLABLE_LAST) {
+            // 가~힣을 초성·중성·종성 자모로 푼다.
             int s = cp - SYLLABLE_BASE;
             int cho = s / 588;
             int jung = (s % 588) / 28;
             int jong = s % 28;
+
             return CHO.charAt(cho) + JUNG_EXPAND[jung] + JONG_EXPAND[jong];
         }
         if (cp >= 0x3131 && cp <= 0x314E) {

@@ -53,6 +53,7 @@ public class MailController {
                 .filename(attachment.filename(), StandardCharsets.UTF_8)
                 .build();
 
+        // 브라우저가 파일명으로 저장하게 Content-Disposition을 붙인다.
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
                 .contentType(MediaType.parseMediaType(attachment.contentType()))

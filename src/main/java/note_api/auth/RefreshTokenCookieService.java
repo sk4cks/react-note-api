@@ -22,9 +22,11 @@ public class RefreshTokenCookieService {
     /** 요청 cookie에서 refresh_token 값을 읽는다. */
     public String readRefreshToken(HttpServletRequest request) {
         Cookie[] cookies = request.getCookies();
+
         if (cookies == null) {
             return null;
         }
+
         for (Cookie cookie : cookies) {
             if (properties.name().equals(cookie.getName())
                     && StringUtils.hasText(cookie.getValue())) {
@@ -40,6 +42,7 @@ public class RefreshTokenCookieService {
         if (!StringUtils.hasText(refreshToken)) {
             return;
         }
+
         response.addHeader(
                 "Set-Cookie",
                 buildCookie(refreshToken, Duration.ofDays(properties.maxAgeDays())).toString());
