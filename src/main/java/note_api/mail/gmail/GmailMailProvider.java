@@ -7,6 +7,7 @@ import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailRecipientSuggestion;
+import note_api.mail.dto.SaveDraftRequest;
 import note_api.mail.dto.SendMailRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -95,7 +96,22 @@ public class GmailMailProvider implements MailProvider {
      */
     @Override
     public void sendMessage(String userId, SendMailRequest request) {
-        gmailClient.sendMessage(googleToken(userId), request);
+        String token = googleToken(userId);
+        gmailClient.sendMessage(token, request);
+
+        if (request.draftId() != null) {
+            try {
+                gmailClient.deleteDraftByMessageId(token, request.draftId());
+
+            } catch (RuntimeException ex) {
+                log.warn("Failed to delete Gmail draft {}", request.draftId(), ex);
+            }
+        }
+    }
+
+    @Override
+    public String saveDraft(String userId, SaveDraftRequest request) {
+        return gmailClient.saveDraft(googleToken(userId), request);
     }
 
     /**

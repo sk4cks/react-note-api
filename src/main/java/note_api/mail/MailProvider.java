@@ -5,6 +5,7 @@ import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailRecipientSuggestion;
+import note_api.mail.dto.SaveDraftRequest;
 import note_api.mail.dto.SendMailRequest;
 
 import java.util.List;
@@ -19,6 +20,9 @@ public interface MailProvider {
     MailAttachmentContent getAttachment(String userId, String folder, String messageId, String attachmentId);
 
     void sendMessage(String userId, SendMailRequest request);
+
+    /** 임시보관함에 저장하고 메시지 id를 돌려준다. request.id가 있으면 그 초안을 교체한다. */
+    String saveDraft(String userId, SaveDraftRequest request);
 
     List<MailFolderDto> getFolderStats(String userId);
 

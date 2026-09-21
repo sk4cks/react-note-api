@@ -37,7 +37,7 @@ public class ContactController {
 
     @GetMapping("/contacts")
     public List<ContactResponse> listContacts(
-            @AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) String q) {
+            @AuthenticationPrincipal Jwt jwt, @RequestParam(name = "q", required = false) String q) {
         // JWT sub = Auth userId. 주소록은 Auth 내부 API.
         return authServerClient.listContacts(jwt.getSubject(), q);
     }
@@ -51,7 +51,7 @@ public class ContactController {
 
     /** 개인 연락처 삭제. Auth 내부 API. */
     @PostMapping("/contacts/{id}/delete")
-    public ResponseEntity<Void> deleteContact(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+    public ResponseEntity<Void> deleteContact(@AuthenticationPrincipal Jwt jwt, @PathVariable("id") Long id) {
         authServerClient.deleteContact(jwt.getSubject(), id);
 
         return ResponseEntity.noContent().build();
@@ -74,14 +74,14 @@ public class ContactController {
     @PostMapping("/contact-groups/{id}/update")
     public ContactGroupResponse renameGroup(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @RequestBody Map<String, Object> body) {
         return authServerClient.updateContactGroup(jwt.getSubject(), id, body);
     }
 
     /** 그룹 삭제. */
     @PostMapping("/contact-groups/{id}/delete")
-    public ResponseEntity<Void> deleteGroup(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+    public ResponseEntity<Void> deleteGroup(@AuthenticationPrincipal Jwt jwt, @PathVariable("id") Long id) {
         authServerClient.deleteContactGroup(jwt.getSubject(), id);
 
         return ResponseEntity.noContent().build();
@@ -91,7 +91,7 @@ public class ContactController {
     @PostMapping("/contact-groups/{id}/members")
     public ContactGroupResponse replaceMembers(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @RequestBody Map<String, Object> body) {
         return authServerClient.replaceContactGroupMembers(jwt.getSubject(), id, body);
     }
@@ -99,7 +99,7 @@ public class ContactController {
     /** 그룹 공유 목록. */
     @GetMapping("/contact-groups/{id}/shares")
     public List<ContactGroupShareResponse> listShares(
-            @AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+            @AuthenticationPrincipal Jwt jwt, @PathVariable("id") Long id) {
         return authServerClient.listContactGroupShares(jwt.getSubject(), id);
     }
 
@@ -107,7 +107,7 @@ public class ContactController {
     @PostMapping("/contact-groups/{id}/shares")
     public ContactGroupShareResponse shareGroup(
             @AuthenticationPrincipal Jwt jwt,
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @RequestBody Map<String, Object> body) {
         return authServerClient.shareContactGroup(jwt.getSubject(), id, body);
     }
@@ -115,7 +115,7 @@ public class ContactController {
     /** 공유 회수. 공유받은 쪽에서 나가기에도 쓴다. */
     @PostMapping("/contact-groups/{id}/shares/{shareId}/delete")
     public ResponseEntity<Void> revokeShare(
-            @AuthenticationPrincipal Jwt jwt, @PathVariable Long id, @PathVariable Long shareId) {
+            @AuthenticationPrincipal Jwt jwt, @PathVariable("id") Long id, @PathVariable("shareId") Long shareId) {
         authServerClient.revokeContactGroupShare(jwt.getSubject(), id, shareId);
 
         return ResponseEntity.noContent().build();
@@ -124,7 +124,7 @@ public class ContactController {
     /** 주소록(그룹·연락처) + 메일 히스토리를 합친 자동완성. */
     @GetMapping("/mail/recipients/suggest")
     public List<RecipientSuggestItem> suggestRecipients(
-            @AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) String q) {
+            @AuthenticationPrincipal Jwt jwt, @RequestParam(name = "q", required = false) String q) {
         String userId = jwt.getSubject();
 
         // Auth 주소록(그룹·연락처) + 이 BFF의 메일 히스토리.

@@ -6,6 +6,7 @@ import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailMessageSummaryDto;
 import note_api.mail.dto.SendMailRequest;
+import note_api.mail.dto.SaveDraftRequest;
 import note_api.mail.gmail.GmailClient;
 import note_api.mail.gmail.GmailMailProvider;
 import note_api.mail.imap.ImapMailProvider;
@@ -50,7 +51,7 @@ class MailServiceTest {
         new MailMessageListDto(
             List.of(
                 new MailMessageSummaryDto(
-                    "msg-1", "inbox", "Alice", "a@x.com", "Hi", "preview", "date", true)),
+                    "msg-1", "inbox", "Alice", "a@x.com", "b@x.com", "Hi", "preview", "date", true)),
             "next-page");
     when(authServerClient.fetchGoogleAccessToken(PRINCIPAL)).thenReturn(GOOGLE_TOKEN);
     when(gmailClient.listMessages(GOOGLE_TOKEN, "inbox", 20, null))
@@ -113,6 +114,17 @@ class MailServiceTest {
     mailService.sendMessage(PRINCIPAL, request);
 
     verify(gmailClient).sendMessage(GOOGLE_TOKEN, request);
+  }
+
+  @Test
+  void saveDraft_delegatesToGmailClient() {
+    note_api.mail.dto.SaveDraftRequest request =
+        new SaveDraftRequest(null, List.of(), List.of(), List.of(), "초안", "<p></p>", List.of());
+    when(authServerClient.fetchGoogleAccessToken(PRINCIPAL)).thenReturn(GOOGLE_TOKEN);
+    when(gmailClient.saveDraft(GOOGLE_TOKEN, request)).thenReturn("draft-msg");
+
+    assertThat(mailService.saveDraft(PRINCIPAL, request).id()).isEqualTo("draft-msg");
+    verify(gmailClient).saveDraft(GOOGLE_TOKEN, request);
   }
 
   @Test

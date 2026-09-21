@@ -5,6 +5,8 @@ import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailRecipientSuggestion;
+import note_api.mail.dto.SaveDraftRequest;
+import note_api.mail.dto.MailDraftResponse;
 import note_api.mail.dto.SendMailRequest;
 import note_api.mail.gmail.GmailMailProvider;
 import note_api.mail.imap.ImapMailProvider;
@@ -49,6 +51,11 @@ public class MailService {
     /** 메일 발송. */
     public void sendMessage(String principal, SendMailRequest request) {
         mailProvider.sendMessage(principal, request);
+    }
+
+    /** 임시저장. 같은 초안이면 id를 유지·교체한다. */
+    public MailDraftResponse saveDraft(String principal, SaveDraftRequest request) {
+        return new MailDraftResponse(mailProvider.saveDraft(principal, request));
     }
 
     /** 편지함 건수(뱃지). */

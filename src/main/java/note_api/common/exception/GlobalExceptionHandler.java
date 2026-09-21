@@ -37,7 +37,7 @@ public class GlobalExceptionHandler {
         Map<String, String> errors = new LinkedHashMap<>();
 
         for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
-            errors.putIfAbsent(fieldError.getField(), fieldError.getDefaultMessage());
+            errors.putIfAbsent(fieldError.getField(), describeFieldError(fieldError));
         }
 
         String message = errors.values().stream()
@@ -46,6 +46,50 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ValidationErrorResponse("VALIDATION_FAILED", message, errors));
+    }
+
+    /** 기본 "공백일 수 없습니다" 대신 어느 칸인지 밝힌다. */
+    private static String describeFieldError(FieldError fieldError) {
+        String raw = fieldError.getDefaultMessage();
+
+        if (StringUtils.hasText(raw) && !isGenericBlankMessage(raw)) {
+            return raw;
+        }
+
+        return blankMessage(fieldError.getField());
+    }
+
+    private static boolean isGenericBlankMessage(String raw) {
+        String normalized = raw.trim();
+
+        return "공백일 수 없습니다".equals(normalized)
+                || "비어 있을 수 없습니다".equals(normalized)
+                || "널이어서는 안됩니다".equals(normalized)
+                || "must not be blank".equalsIgnoreCase(normalized)
+                || "must not be empty".equalsIgnoreCase(normalized)
+                || "must not be null".equalsIgnoreCase(normalized);
+    }
+
+    private static String blankMessage(String field) {
+        String leaf = field;
+        int dot = leaf.lastIndexOf('.');
+
+        if (dot >= 0) {
+            leaf = leaf.substring(dot + 1);
+        }
+
+        leaf = leaf.replaceAll("\\[\\d+\\]", "");
+
+        return switch (leaf) {
+            case "body" -> "본문을 입력해 주세요.";
+            case "subject" -> "제목을 입력해 주세요.";
+            case "to" -> "받는 사람을 입력해 주세요.";
+            case "cc" -> "참조 이메일을 입력해 주세요.";
+            case "bcc" -> "숨은참조 이메일을 입력해 주세요.";
+            case "filename" -> "첨부 파일 이름이 없습니다.";
+            case "contentBase64" -> "첨부 파일 내용이 없습니다.";
+            default -> "값을 입력해 주세요.";
+        };
     }
 
     /**

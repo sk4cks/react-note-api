@@ -11,6 +11,7 @@ import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailMessageSummaryDto;
 import note_api.mail.dto.MailRecipientSuggestion;
+import note_api.mail.dto.SaveDraftRequest;
 import note_api.mail.dto.SendMailRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -164,6 +165,81 @@ public class GmailClient {
         String url = GmailApiConstants.USERS_ME_BASE + "/messages/send";
         JsonNode payload = objectMapper.createObjectNode().put("raw", encoded);
         exchange(accessToken, url, HttpMethod.POST, payload);
+    }
+
+    /** Gmail drafts.create/update. 목록과 맞추려고 message id를 돌려준다. */
+    public String saveDraft(String accessToken, SaveDraftRequest request) {
+        byte[] mimeBytes = MailMimeFactory.toRfc822Bytes(null, request.toSendRequest());
+        String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(mimeBytes);
+        JsonNode message = objectMapper.createObjectNode().put("raw", encoded);
+
+        if (StringUtils.hasText(request.id())) {
+            String draftId = findDraftId(accessToken, request.id());
+
+            if (StringUtils.hasText(draftId)) {
+                JsonNode payload = objectMapper.createObjectNode()
+                        .put("id", draftId)
+                        .set("message", message);
+                JsonNode body = exchange(
+                        accessToken,
+                        GmailApiConstants.USERS_ME_BASE + "/drafts/" + draftId,
+                        HttpMethod.PUT,
+                        payload);
+                String messageId = body.path("message").path("id").asText(null);
+
+                return StringUtils.hasText(messageId) ? messageId : request.id();
+            }
+        }
+
+        JsonNode payload = objectMapper.createObjectNode().set("message", message);
+        JsonNode body = exchange(accessToken, GmailApiConstants.USERS_ME_BASE + "/drafts", HttpMethod.POST, payload);
+        String messageId = body.path("message").path("id").asText(null);
+
+        if (!StringUtils.hasText(messageId)) {
+            throw new IllegalStateException("Gmail draft create returned no message id");
+        }
+
+        return messageId;
+    }
+
+    public void deleteDraftByMessageId(String accessToken, String messageId) {
+        String draftId = findDraftId(accessToken, messageId);
+
+        if (!StringUtils.hasText(draftId)) {
+            return;
+        }
+
+        exchange(accessToken, GmailApiConstants.USERS_ME_BASE + "/drafts/" + draftId, HttpMethod.DELETE, null);
+    }
+
+    private String findDraftId(String accessToken, String messageId) {
+        String pageToken = null;
+
+        do {
+            UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(
+                            GmailApiConstants.USERS_ME_BASE + "/drafts")
+                    .queryParam("maxResults", 100);
+
+            if (StringUtils.hasText(pageToken)) {
+                builder.queryParam("pageToken", pageToken);
+            }
+
+            JsonNode body = exchange(accessToken, builder.build().toUriString(), HttpMethod.GET, null);
+
+            for (JsonNode draft : body.path("drafts")) {
+                if (messageId.equals(draft.path("message").path("id").asText())) {
+                    return draft.path("id").asText(null);
+                }
+            }
+
+            pageToken = body.path("nextPageToken").asText(null);
+
+            if (!StringUtils.hasText(pageToken)) {
+                break;
+            }
+        } while (true);
+
+        return null;
     }
 
     public List<MailFolderDto> getFolderStats(String accessToken) {

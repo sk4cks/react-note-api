@@ -4,6 +4,8 @@ import note_api.mail.dto.MailAttachmentContent;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
+import note_api.mail.dto.MailDraftResponse;
+import note_api.mail.dto.SaveDraftRequest;
 import note_api.mail.dto.SendMailRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,19 +36,29 @@ public class MailController {
 
     /** 폴더 메일 목록. */
     @GetMapping("/messages")
-    public MailMessageListDto listMessages(@AuthenticationPrincipal Jwt jwt, @RequestParam(defaultValue = "inbox") String folder, @RequestParam(required = false) String pageToken) {
+    public MailMessageListDto listMessages(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(name = "folder", defaultValue = "inbox") String folder,
+            @RequestParam(name = "pageToken", required = false) String pageToken) {
         return mailService.listMessages(jwt.getSubject(), folder, pageToken);
     }
 
     /** 메일 한 통. IMAP은 folder가 필요하다. */
     @GetMapping("/messages/{id}")
-    public MailMessageDetailDto getMessage(@AuthenticationPrincipal Jwt jwt, @PathVariable String id, @RequestParam(defaultValue = "inbox") String folder) {
+    public MailMessageDetailDto getMessage(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable("id") String id,
+            @RequestParam(name = "folder", defaultValue = "inbox") String folder) {
         return mailService.getMessage(jwt.getSubject(), folder, id);
     }
 
     /** 첨부 다운로드. */
     @GetMapping("/messages/{id}/attachments/{attachmentId}")
-    public ResponseEntity<byte[]> getAttachment(@AuthenticationPrincipal Jwt jwt, @PathVariable String id, @PathVariable String attachmentId, @RequestParam(defaultValue = "inbox") String folder) {
+    public ResponseEntity<byte[]> getAttachment(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable("id") String id,
+            @PathVariable("attachmentId") String attachmentId,
+            @RequestParam(name = "folder", defaultValue = "inbox") String folder) {
         MailAttachmentContent attachment =
                 mailService.getAttachment(jwt.getSubject(), folder, id, attachmentId);
         ContentDisposition disposition = ContentDisposition.attachment()
@@ -70,5 +82,12 @@ public class MailController {
     @PostMapping("/send")
     public void sendMail(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody SendMailRequest request) {
         mailService.sendMessage(jwt.getSubject(), request);
+    }
+
+    /** 임시저장. 받는 사람·제목이 없어도 된다. */
+    @PostMapping("/drafts")
+    public MailDraftResponse saveDraft(
+            @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody SaveDraftRequest request) {
+        return mailService.saveDraft(jwt.getSubject(), request);
     }
 }

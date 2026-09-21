@@ -41,6 +41,7 @@ final class GmailMessageParser {
                 folder,
                 parsedFrom.displayName(),
                 parsedFrom.email(),
+                headers.to(),
                 headers.subject(),
                 preview,
                 formatDate(latestMessage.path("internalDate").asText(null), headers.date()),

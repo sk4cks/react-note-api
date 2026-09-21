@@ -10,6 +10,7 @@ import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
 import note_api.mail.dto.MailMessageSummaryDto;
 import note_api.mail.dto.MailRecipientSuggestion;
+import note_api.mail.dto.SaveDraftRequest;
 import note_api.mail.dto.SendMailRequest;
 import note_api.common.exception.ApiException;
 import note_api.common.exception.ErrorCode;
@@ -25,6 +26,8 @@ import jakarta.mail.Transport;
 import jakarta.mail.UIDFolder;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
+import org.eclipse.angus.mail.imap.AppendUID;
+import org.eclipse.angus.mail.imap.IMAPFolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -242,6 +245,10 @@ public class ImapMailProvider implements MailProvider {
             sentCopy.setSentDate(sentDate);
             appendToSent(creds, sentCopy);
 
+            if (StringUtils.hasText(request.draftId())) {
+                deleteDraftQuietly(creds, request.draftId());
+            }
+
         } catch (MessagingException ex) {
             throw new IllegalStateException("SMTP send failed for user " + userId, ex);
         }
@@ -266,24 +273,44 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * 폴더 뱃지용 통계.
-     * MVP는 INBOX unread만 집계. sent/draft는 0 placeholder (Gmail API 계약 유지).
-     *
-     * @param userId JWT subject
-     * @return inbox / sent / draft 항목
+     * Drafts에 MIME을 APPEND한다. 기존 id가 있으면 새 사본을 넣은 뒤 옛 UID를 지운다.
+     */
+    @Override
+    public String saveDraft(String userId, SaveDraftRequest request) {
+        MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
+
+        try {
+            Session smtpSession = createSmtpSession(creds);
+            MimeMessage message = MailMimeFactory.create(smtpSession, creds.mailAddress(), request.toSendRequest());
+            message.setSentDate(new Date());
+            message.setFlag(Flags.Flag.DRAFT, true);
+            message.setFlag(Flags.Flag.SEEN, true);
+
+            return appendDraft(creds, message, request.id());
+
+        } catch (MessagingException ex) {
+            throw new IllegalStateException("IMAP draft save failed for user " + userId, ex);
+        }
+    }
+
+    /**
+     * 폴더 뱃지용 통계. inbox는 unread, sent/draft는 전체 건수.
      */
     @Override
     public List<MailFolderDto> getFolderStats(String userId) {
         MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
         try (ImapSession session = openImap(creds)) {
             Folder inbox = openFolder(session.store(), "inbox", Folder.READ_ONLY);
+
             try {
                 int unread = inbox.getUnreadMessageCount();
+                int sent = countMessages(session.store(), "sent");
+                int draft = countMessages(session.store(), "draft");
 
                 return List.of(
                         new MailFolderDto("inbox", "받은편지함", unread),
-                        new MailFolderDto("sent", "보낸편지함", 0),
-                        new MailFolderDto("draft", "임시보관함", 0));
+                        new MailFolderDto("sent", "보낸편지함", sent),
+                        new MailFolderDto("draft", "임시보관함", draft));
             } finally {
                 closeQuietly(inbox);
             }
@@ -366,6 +393,87 @@ public class ImapMailProvider implements MailProvider {
             }
             String name = internetAddress.getPersonal();
             byEmail.putIfAbsent(key, MailRecipientSuggestion.of(email, name != null ? name : ""));
+        }
+    }
+
+    private String appendDraft(MailboxCredentialsResponse creds, MimeMessage message, String oldId)
+            throws MessagingException {
+        try (ImapSession session = openImap(creds)) {
+            Folder drafts = openFolder(session.store(), "draft", Folder.READ_WRITE);
+
+            try {
+                IMAPFolder imapFolder = (IMAPFolder) drafts;
+                AppendUID[] appended = imapFolder.appendUIDMessages(new Message[] {message});
+                UIDFolder uidFolder = (UIDFolder) drafts;
+                String newId = null;
+
+                if (appended != null && appended.length > 0 && appended[0].uid > 0) {
+                    newId = String.valueOf(appended[0].uid);
+                } else {
+                    int total = drafts.getMessageCount();
+
+                    if (total < 1) {
+                        throw new MessagingException("IMAP draft append returned no UID");
+                    }
+
+                    newId = String.valueOf(uidFolder.getUID(drafts.getMessage(total)));
+                }
+
+                if (StringUtils.hasText(oldId) && !oldId.equals(newId)) {
+                    try {
+                        Message previous = uidFolder.getMessageByUID(parseUid(oldId));
+
+                        if (previous != null) {
+                            previous.setFlag(Flags.Flag.DELETED, true);
+                            drafts.expunge();
+                        }
+
+                    } catch (ApiException ex) {
+                        log.warn("Failed to delete IMAP draft {}", oldId, ex);
+                    }
+                }
+
+                return newId;
+
+            } finally {
+                closeQuietly(drafts);
+            }
+        }
+    }
+
+    private void deleteDraftQuietly(MailboxCredentialsResponse creds, String draftId) {
+        try (ImapSession session = openImap(creds)) {
+            Folder drafts = openFolder(session.store(), "draft", Folder.READ_WRITE);
+
+            try {
+                long uid = parseUid(draftId);
+                UIDFolder uidFolder = (UIDFolder) drafts;
+                Message message = uidFolder.getMessageByUID(uid);
+
+                if (message == null) {
+                    return;
+                }
+
+                message.setFlag(Flags.Flag.DELETED, true);
+                drafts.expunge();
+
+            } finally {
+                closeQuietly(drafts);
+            }
+
+        } catch (MessagingException | ApiException ex) {
+            log.warn("Failed to delete IMAP draft {}", draftId, ex);
+        }
+    }
+
+    private static int countMessages(Store store, String folder) throws MessagingException {
+        Folder imapFolder = openFolder(store, folder, Folder.READ_ONLY);
+
+        try {
+            return imapFolder.getMessageCount();
+
+        } finally {
+            closeQuietly(imapFolder);
         }
     }
 
@@ -480,6 +588,7 @@ public class ImapMailProvider implements MailProvider {
                 folder,
                 envelope.fromName(),
                 envelope.fromEmail(),
+                envelope.to(),
                 envelope.subject(),
                 previewOf(ImapMimeReader.previewText(message)),
                 formatDate(envelope.sentDate()),

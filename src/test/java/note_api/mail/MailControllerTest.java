@@ -2,6 +2,7 @@ package note_api.mail;
 
 import note_api.mail.dto.MailAttachmentContent;
 import note_api.mail.dto.MailAttachmentDto;
+import note_api.mail.dto.MailDraftResponse;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
@@ -80,6 +81,7 @@ class MailControllerTest {
             "inbox",
             "Alice",
             "alice@example.com",
+            "bob@example.com",
             "Hello",
             "Preview text",
             "2026-06-23T10:00:00Z",
@@ -225,6 +227,40 @@ class MailControllerTest {
   }
 
   @Test
+  void sendMail_returnsBadRequest_whenBodyBlank() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/mail/send")
+                .with(authenticatedJwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"to":["recipient@example.com"],"subject":"Test","body":""}
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("본문을 입력해 주세요."));
+  }
+
+  @Test
+  void sendMail_succeeds_whenBodyBlankButHasAttachment() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/mail/send")
+                .with(authenticatedJwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "to":["recipient@example.com"],
+                      "subject":"Test",
+                      "body":"",
+                      "attachments":[{"filename":"a.txt","contentType":"text/plain","contentBase64":"YQ=="}]
+                    }
+                    """))
+        .andExpect(status().isOk());
+  }
+
+  @Test
   void sendMail_succeeds_withCcAndBcc() throws Exception {
     mockMvc
         .perform(
@@ -253,5 +289,23 @@ class MailControllerTest {
                 "Test",
                 "Hello",
                 List.of())));
+  }
+
+  @Test
+  void saveDraft_returnsId_whenAuthenticated() throws Exception {
+    when(mailService.saveDraft(eq(PRINCIPAL), any()))
+        .thenReturn(new MailDraftResponse("42"));
+
+    mockMvc
+        .perform(
+            post("/api/mail/drafts")
+                .with(authenticatedJwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"subject":"초안","body":"<p>hi</p>"}
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value("42"));
   }
 }

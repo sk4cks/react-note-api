@@ -3,6 +3,6 @@ package note_api.mail.dto;
 import jakarta.validation.constraints.NotBlank;
 
 public record MailAttachmentRequest(
-        @NotBlank String filename,
+        @NotBlank(message = "첨부 파일 이름이 없습니다.") String filename,
         String contentType,
-        @NotBlank String contentBase64) {}
+        @NotBlank(message = "첨부 파일 내용이 없습니다.") String contentBase64) {}
