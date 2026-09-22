@@ -114,6 +114,39 @@ public class GmailMailProvider implements MailProvider {
         return gmailClient.saveDraft(googleToken(userId), request);
     }
 
+    /** 휴지통이면 완전 삭제, 그 외 폴더는 trash 라벨로 옮긴다. */
+    @Override
+    public void deleteMessages(String userId, String folder, List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+
+        String token = googleToken(userId);
+        boolean permanent = GmailApiConstants.FOLDER_TRASH.equalsIgnoreCase(folder == null ? "" : folder.trim());
+
+        for (String id : ids) {
+            if (permanent) {
+                gmailClient.deleteMessage(token, id);
+            } else {
+                gmailClient.trashMessage(token, id);
+            }
+        }
+    }
+
+    /** 휴지통 라벨을 벗긴다. 갈 곳이 없으면 받은편지함으로 되돌린다. */
+    @Override
+    public void restoreMessages(String userId, List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+
+        String token = googleToken(userId);
+
+        for (String id : ids) {
+            gmailClient.restoreMessage(token, id);
+        }
+    }
+
     /**
      * 네비/뱃지용 폴더 통계를 조회한다.
      * inbox unread thread 수, sent/draft label threadsTotal 등.

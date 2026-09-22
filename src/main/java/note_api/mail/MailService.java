@@ -58,6 +58,16 @@ public class MailService {
         return new MailDraftResponse(mailProvider.saveDraft(principal, request));
     }
 
+    /** 메일 삭제. 휴지통이 아니면 휴지통으로 옮긴다. */
+    public void deleteMessages(String principal, String folder, List<String> ids) {
+        mailProvider.deleteMessages(principal, folder, ids);
+    }
+
+    /** 휴지통 메일을 원래 편지함으로 되돌린다. */
+    public void restoreMessages(String principal, List<String> ids) {
+        mailProvider.restoreMessages(principal, ids);
+    }
+
     /** 편지함 건수(뱃지). */
     public List<MailFolderDto> getFolderStats(String principal) {
         return mailProvider.getFolderStats(principal);

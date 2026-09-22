@@ -143,6 +143,9 @@ final class GmailMessageParser {
 
     /** Gmail label 우선순위로 화면용 folder id를 결정 */
     private static String resolveFolder(JsonNode body) {
+        if (hasLabel(body, GmailApiConstants.LABEL_TRASH)) {
+            return GmailApiConstants.FOLDER_TRASH;
+        }
         if (hasLabel(body, GmailApiConstants.LABEL_DRAFT)) {
             return GmailApiConstants.FOLDER_DRAFT;
         }

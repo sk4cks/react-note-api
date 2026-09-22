@@ -62,6 +62,11 @@ public class ImapMailProvider implements MailProvider {
     /** 한 페이지에 가져올 메시지 수 */
     private static final int DEFAULT_PAGE_SIZE = 20;
 
+    /** 휴지통으로 옮기기 전 폴더. IMAP 사용자 플래그. */
+    private static final String ORIGIN_INBOX = "NoteOriginInbox";
+    private static final String ORIGIN_SENT = "NoteOriginSent";
+    private static final String ORIGIN_DRAFT = "NoteOriginDraft";
+
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 
     private final AuthServerClient authServerClient;
@@ -294,6 +299,49 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
+     * 휴지통이면 UID를 지우고, 그 외 폴더는 Trash로 옮긴다.
+     */
+    @Override
+    public void deleteMessages(String userId, String folder, List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+
+        MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
+        String normalized = normalizeFolder(folder);
+
+        try (ImapSession session = openImap(creds)) {
+            if ("trash".equals(normalized)) {
+                expungeByUid(session.store(), "trash", ids);
+
+                return;
+            }
+
+            moveToTrash(session.store(), normalized, ids);
+
+        } catch (MessagingException ex) {
+            throw new IllegalStateException("IMAP delete failed for user " + userId, ex);
+        }
+    }
+
+    /** 휴지통 메일을 들어오기 전 폴더로 되돌린다. 표시가 없으면 받은편지함. */
+    @Override
+    public void restoreMessages(String userId, List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+
+        MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
+
+        try (ImapSession session = openImap(creds)) {
+            restoreFromTrash(session.store(), ids);
+
+        } catch (MessagingException ex) {
+            throw new IllegalStateException("IMAP restore failed for user " + userId, ex);
+        }
+    }
+
+    /**
      * 폴더 뱃지용 통계. inbox는 unread, sent/draft는 전체 건수.
      */
     @Override
@@ -306,11 +354,13 @@ public class ImapMailProvider implements MailProvider {
                 int unread = inbox.getUnreadMessageCount();
                 int sent = countMessages(session.store(), "sent");
                 int draft = countMessages(session.store(), "draft");
+                int trash = countMessages(session.store(), "trash");
 
                 return List.of(
                         new MailFolderDto("inbox", "받은편지함", unread),
                         new MailFolderDto("sent", "보낸편지함", sent),
-                        new MailFolderDto("draft", "임시보관함", draft));
+                        new MailFolderDto("draft", "임시보관함", draft),
+                        new MailFolderDto("trash", "휴지통", trash));
             } finally {
                 closeQuietly(inbox);
             }
@@ -439,6 +489,147 @@ public class ImapMailProvider implements MailProvider {
                 closeQuietly(drafts);
             }
         }
+    }
+
+    /** 원본 폴더에서 Trash로 MOVE한다. */
+    private void moveToTrash(Store store, String folder, List<String> ids) throws MessagingException {
+        Folder source = openFolder(store, folder, Folder.READ_WRITE);
+
+        try {
+            Folder trash = openFolder(store, "trash", Folder.READ_WRITE);
+
+            try {
+                Message[] messages = findByUid((UIDFolder) source, ids);
+
+                if (messages.length == 0) {
+                    return;
+                }
+
+                Flags origin = new Flags(originKeyword(folder));
+
+                for (Message message : messages) {
+                    message.setFlags(origin, true);
+                }
+
+                ((IMAPFolder) source).moveMessages(messages, trash);
+
+            } finally {
+                closeQuietly(trash);
+            }
+
+        } finally {
+            closeQuietly(source);
+        }
+    }
+
+    /** 휴지통에서 원래 폴더로 MOVE한다. */
+    private void restoreFromTrash(Store store, List<String> ids) throws MessagingException {
+        Folder trash = openFolder(store, "trash", Folder.READ_WRITE);
+
+        try {
+            Message[] messages = findByUid((UIDFolder) trash, ids);
+
+            if (messages.length == 0) {
+                return;
+            }
+
+            Map<String, List<Message>> byFolder = new LinkedHashMap<>();
+
+            for (Message message : messages) {
+                byFolder.computeIfAbsent(originFolder(message), key -> new ArrayList<>()).add(message);
+            }
+
+            Flags originFlags = new Flags(ORIGIN_INBOX);
+            originFlags.add(ORIGIN_SENT);
+            originFlags.add(ORIGIN_DRAFT);
+
+            for (Map.Entry<String, List<Message>> entry : byFolder.entrySet()) {
+                Folder destination = openFolder(store, entry.getKey(), Folder.READ_WRITE);
+
+                try {
+                    Message[] batch = entry.getValue().toArray(Message[]::new);
+
+                    for (Message message : batch) {
+                        message.setFlags(originFlags, false);
+                    }
+
+                    ((IMAPFolder) trash).moveMessages(batch, destination);
+
+                } finally {
+                    closeQuietly(destination);
+                }
+            }
+
+        } finally {
+            closeQuietly(trash);
+        }
+    }
+
+    /** 휴지통으로 넣기 전에 달아 둔 폴더 표시. */
+    private static String originKeyword(String folder) {
+        return switch (normalizeFolder(folder)) {
+            case "sent" -> ORIGIN_SENT;
+            case "draft" -> ORIGIN_DRAFT;
+            default -> ORIGIN_INBOX;
+        };
+    }
+
+    /** 표시가 없으면 받은편지함. \\Draft 면 임시보관함. */
+    private static String originFolder(Message message) throws MessagingException {
+        Flags flags = message.getFlags();
+
+        if (flags.contains(ORIGIN_DRAFT) || message.isSet(Flags.Flag.DRAFT)) {
+            return "draft";
+        }
+
+        if (flags.contains(ORIGIN_SENT)) {
+            return "sent";
+        }
+
+        return "inbox";
+    }
+
+    /** 휴지통 UID에 \\Deleted 를 걸고 expunge한다. */
+    private void expungeByUid(Store store, String folder, List<String> ids) throws MessagingException {
+        Folder imapFolder = openFolder(store, folder, Folder.READ_WRITE);
+
+        try {
+            Message[] messages = findByUid((UIDFolder) imapFolder, ids);
+
+            if (messages.length == 0) {
+                return;
+            }
+
+            for (Message message : messages) {
+                message.setFlag(Flags.Flag.DELETED, true);
+            }
+
+            imapFolder.expunge();
+
+        } finally {
+            closeQuietly(imapFolder);
+        }
+    }
+
+    private static Message[] findByUid(UIDFolder uidFolder, List<String> ids) throws MessagingException {
+        List<Message> found = new ArrayList<>();
+
+        for (String id : ids) {
+            Message message;
+
+            try {
+                message = uidFolder.getMessageByUID(parseUid(id));
+
+            } catch (ApiException ex) {
+                continue;
+            }
+
+            if (message != null) {
+                found.add(message);
+            }
+        }
+
+        return found.toArray(Message[]::new);
     }
 
     private void deleteDraftQuietly(MailboxCredentialsResponse creds, String draftId) {

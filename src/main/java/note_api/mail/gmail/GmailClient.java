@@ -212,6 +212,63 @@ public class GmailClient {
         exchange(accessToken, GmailApiConstants.USERS_ME_BASE + "/drafts/" + draftId, HttpMethod.DELETE, null);
     }
 
+    /** 메시지를 휴지통으로 옮긴다. */
+    public void trashMessage(String accessToken, String messageId) {
+        exchange(
+                accessToken,
+                GmailApiConstants.USERS_ME_BASE + "/messages/" + messageId + "/trash",
+                HttpMethod.POST,
+                null);
+    }
+
+    /** 휴지통 메시지를 완전히 지운다. */
+    public void deleteMessage(String accessToken, String messageId) {
+        exchange(
+                accessToken,
+                GmailApiConstants.USERS_ME_BASE + "/messages/" + messageId,
+                HttpMethod.DELETE,
+                null);
+    }
+
+    /** 휴지통에서 꺼낸다. 받은·보낸·임시 라벨이 없으면 받은편지함으로 되돌린다. */
+    public void restoreMessage(String accessToken, String messageId) {
+        JsonNode message = exchange(
+                accessToken,
+                GmailApiConstants.USERS_ME_BASE + "/messages/" + messageId + "/untrash",
+                HttpMethod.POST,
+                null);
+
+        if (hasLabel(message, GmailApiConstants.LABEL_INBOX)
+                || hasLabel(message, GmailApiConstants.LABEL_SENT)
+                || hasLabel(message, GmailApiConstants.LABEL_DRAFT)) {
+            return;
+        }
+
+        JsonNode payload = objectMapper.createObjectNode()
+                .set("addLabelIds", objectMapper.createArrayNode().add(GmailApiConstants.LABEL_INBOX));
+        exchange(
+                accessToken,
+                GmailApiConstants.USERS_ME_BASE + "/messages/" + messageId + "/modify",
+                HttpMethod.POST,
+                payload);
+    }
+
+    private static boolean hasLabel(JsonNode message, String label) {
+        JsonNode labels = message.path("labelIds");
+
+        if (!labels.isArray()) {
+            return false;
+        }
+
+        for (JsonNode node : labels) {
+            if (label.equals(node.asText())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private String findDraftId(String accessToken, String messageId) {
         String pageToken = null;
 
@@ -243,7 +300,7 @@ public class GmailClient {
     }
 
     public List<MailFolderDto> getFolderStats(String accessToken) {
-        List<String> labelIds = List.of(GmailApiConstants.LABEL_DRAFT);
+        List<String> labelIds = List.of(GmailApiConstants.LABEL_DRAFT, GmailApiConstants.LABEL_TRASH);
         Map<String, JsonNode> labelsById = fetchLabelsBatch(accessToken, labelIds);
 
         // 받은편지함 뱃지는 Primary unread 스레드 수.
@@ -261,6 +318,11 @@ public class GmailClient {
                         GmailApiConstants.FOLDER_DRAFT,
                         "임시보관함",
                         labelsById.get(GmailApiConstants.LABEL_DRAFT),
+                        GmailApiConstants.LABEL_FIELD_THREADS_TOTAL),
+                toFolderDto(
+                        GmailApiConstants.FOLDER_TRASH,
+                        "휴지통",
+                        labelsById.get(GmailApiConstants.LABEL_TRASH),
                         GmailApiConstants.LABEL_FIELD_THREADS_TOTAL));
     }
 
@@ -496,6 +558,7 @@ public class GmailClient {
         return switch (folder) {
             case GmailApiConstants.FOLDER_SENT -> GmailApiConstants.LABEL_SENT;
             case GmailApiConstants.FOLDER_DRAFT -> GmailApiConstants.LABEL_DRAFT;
+            case GmailApiConstants.FOLDER_TRASH -> GmailApiConstants.LABEL_TRASH;
             default -> GmailApiConstants.LABEL_INBOX;
         };
     }

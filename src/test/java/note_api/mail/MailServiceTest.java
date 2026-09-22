@@ -128,6 +128,34 @@ class MailServiceTest {
   }
 
   @Test
+  void deleteMessages_trashesOnGmail_whenFolderIsNotTrash() {
+    when(authServerClient.fetchGoogleAccessToken(PRINCIPAL)).thenReturn(GOOGLE_TOKEN);
+
+    mailService.deleteMessages(PRINCIPAL, "inbox", List.of("msg-1", "msg-2"));
+
+    verify(gmailClient).trashMessage(GOOGLE_TOKEN, "msg-1");
+    verify(gmailClient).trashMessage(GOOGLE_TOKEN, "msg-2");
+  }
+
+  @Test
+  void deleteMessages_deletesOnGmail_whenFolderIsTrash() {
+    when(authServerClient.fetchGoogleAccessToken(PRINCIPAL)).thenReturn(GOOGLE_TOKEN);
+
+    mailService.deleteMessages(PRINCIPAL, "trash", List.of("msg-1"));
+
+    verify(gmailClient).deleteMessage(GOOGLE_TOKEN, "msg-1");
+  }
+
+  @Test
+  void restoreMessages_untrashesOnGmail() {
+    when(authServerClient.fetchGoogleAccessToken(PRINCIPAL)).thenReturn(GOOGLE_TOKEN);
+
+    mailService.restoreMessages(PRINCIPAL, List.of("msg-1"));
+
+    verify(gmailClient).restoreMessage(GOOGLE_TOKEN, "msg-1");
+  }
+
+  @Test
   void getFolderStats_fetchesTokenAndReturnsFolders() {
     List<MailFolderDto> folders = List.of(new MailFolderDto("inbox", "받은편지함", 5));
     when(authServerClient.fetchGoogleAccessToken(PRINCIPAL)).thenReturn(GOOGLE_TOKEN);

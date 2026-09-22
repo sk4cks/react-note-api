@@ -17,6 +17,7 @@ final class GmailApiConstants {
     static final String FOLDER_INBOX = "inbox";
     static final String FOLDER_SENT = "sent";
     static final String FOLDER_DRAFT = "draft";
+    static final String FOLDER_TRASH = "trash";
 
     static final String QUERY_INBOX_PRIMARY = "in:inbox category:primary";
     static final String QUERY_INBOX_PRIMARY_UNREAD = "in:inbox category:primary is:unread";
@@ -26,6 +27,7 @@ final class GmailApiConstants {
     static final String LABEL_INBOX = "INBOX";
     static final String LABEL_SENT = "SENT";
     static final String LABEL_DRAFT = "DRAFT";
+    static final String LABEL_TRASH = "TRASH";
     static final String LABEL_CATEGORY_PERSONAL = "CATEGORY_PERSONAL";
     static final String LABEL_UNREAD = "UNREAD";
 

@@ -4,7 +4,9 @@ import note_api.mail.dto.MailAttachmentContent;
 import note_api.mail.dto.MailFolderDto;
 import note_api.mail.dto.MailMessageDetailDto;
 import note_api.mail.dto.MailMessageListDto;
+import note_api.mail.dto.DeleteMessagesRequest;
 import note_api.mail.dto.MailDraftResponse;
+import note_api.mail.dto.RestoreMessagesRequest;
 import note_api.mail.dto.SaveDraftRequest;
 import note_api.mail.dto.SendMailRequest;
 import jakarta.validation.Valid;
@@ -89,5 +91,19 @@ public class MailController {
     public MailDraftResponse saveDraft(
             @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody SaveDraftRequest request) {
         return mailService.saveDraft(jwt.getSubject(), request);
+    }
+
+    /** 메일 삭제. 휴지통이 아니면 휴지통으로 옮긴다. */
+    @PostMapping("/messages/delete")
+    public void deleteMessages(
+            @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody DeleteMessagesRequest request) {
+        mailService.deleteMessages(jwt.getSubject(), request.folder(), request.ids());
+    }
+
+    /** 휴지통 메일을 원래 편지함으로 되돌린다. */
+    @PostMapping("/messages/restore")
+    public void restoreMessages(
+            @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody RestoreMessagesRequest request) {
+        mailService.restoreMessages(jwt.getSubject(), request.ids());
     }
 }

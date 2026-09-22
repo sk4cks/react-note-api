@@ -308,4 +308,36 @@ class MailControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value("42"));
   }
+
+  @Test
+  void deleteMessages_movesToTrash_whenAuthenticated() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/mail/messages/delete")
+                .with(authenticatedJwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"folder":"inbox","ids":["5","6"]}
+                    """))
+        .andExpect(status().isOk());
+
+    verify(mailService).deleteMessages(PRINCIPAL, "inbox", List.of("5", "6"));
+  }
+
+  @Test
+  void restoreMessages_returnsOk_whenAuthenticated() throws Exception {
+    mockMvc
+        .perform(
+            post("/api/mail/messages/restore")
+                .with(authenticatedJwt())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"ids":["5"]}
+                    """))
+        .andExpect(status().isOk());
+
+    verify(mailService).restoreMessages(PRINCIPAL, List.of("5"));
+  }
 }

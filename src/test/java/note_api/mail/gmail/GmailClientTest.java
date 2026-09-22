@@ -218,6 +218,7 @@ class GmailClientTest {
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer " + ACCESS_TOKEN))
                 .andExpect(content().string(containsString("GET /gmail/v1/users/me/labels/DRAFT")))
+                .andExpect(content().string(containsString("GET /gmail/v1/users/me/labels/TRASH")))
                 .andRespond(
                         withSuccess(
                                 """
@@ -230,6 +231,16 @@ class GmailClientTest {
                                 {
                                   "id":"DRAFT",
                                   "threadsTotal":7
+                                }
+                                --batch_resp
+                                Content-Type: application/http
+
+                                HTTP/1.1 200 OK
+                                Content-Type: application/json
+
+                                {
+                                  "id":"TRASH",
+                                  "threadsTotal":2
                                 }
                                 --batch_resp--
                                 """,
@@ -266,13 +277,15 @@ class GmailClientTest {
 
         List<MailFolderDto> folders = gmailClient.getFolderStats(ACCESS_TOKEN);
 
-        assertThat(folders).hasSize(3);
+        assertThat(folders).hasSize(4);
         assertThat(folders.get(0).id()).isEqualTo("inbox");
         assertThat(folders.get(0).count()).isEqualTo(3);
         assertThat(folders.get(1).id()).isEqualTo("sent");
         assertThat(folders.get(1).count()).isEqualTo(0);
         assertThat(folders.get(2).id()).isEqualTo("draft");
         assertThat(folders.get(2).count()).isEqualTo(7);
+        assertThat(folders.get(3).id()).isEqualTo("trash");
+        assertThat(folders.get(3).count()).isEqualTo(2);
         server.verify();
     }
 }
