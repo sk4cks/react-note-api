@@ -48,8 +48,8 @@ import java.util.Properties;
 /**
  * Mailcow IMAP/SMTP 기반 {@link note_api.mail.MailProvider}.
  * <p>
- * 웹메일 2단계: 자체 {@code userId@도메인} 메일함. BFF가 Gmail API 대신 Jakarta Mail로 접속한다.
- * {@code app.mail.provider=imap} (로컬·k8s 기본)일 때 {@link note_api.mail.MailService}가 이 빈을 사용한다.
+ * 웹메일 2단계: 자체 {@code userId@도메인} 메일함. BFF가 Gmail API 대신 Jakarta Mail로 접속.
+ * {@code app.mail.provider=imap} (로컬·k8s 기본)일 때 {@link note_api.mail.MailService}가 쓰는 빈.
  * <p>
  * 자격은 Auth 내부 API {@code GET /auth/users/{userId}/mailbox} 로만 조회 (BFF→DB 직접 금지).
  * IMAPS 993 / SMTP STARTTLS 587. 로컬 self-signed·IP 접속은 SSL hostname 검증 비활성.
@@ -72,7 +72,7 @@ public class ImapMailProvider implements MailProvider {
     private final AuthServerClient authServerClient;
 
     /**
-     * 폴더 메시지 목록을 최신순으로 조회한다.
+     * 폴더 메시지 목록 최신순 조회.
      * <p>
      * IMAP 번호는 1..N (N=최신). {@code pageToken}은 앞에서 건너뛴 개수(offset) 문자열.
      * 응답 id는 UID — 상세 API·프론트 라우팅 키.
@@ -84,6 +84,7 @@ public class ImapMailProvider implements MailProvider {
      */
     @Override
     public MailMessageListDto listMessages(String userId, String folder, String pageToken) {
+        // Auth 내부 API로 메일함 자격 조회. pageToken은 건너뛸 개수.
         MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
         int offset = parseOffset(pageToken);
 
@@ -97,7 +98,7 @@ public class ImapMailProvider implements MailProvider {
                     return new MailMessageListDto(List.of(), null);
                 }
 
-                // IMAP 번호는 1..N이고 N이 최신이다. offset만큼 최신 쪽을 건너뛴다.
+                // IMAP 번호는 1..N, N이 최신. offset만큼 최신 쪽을 건너뛰는 구간.
                 int end = total - offset;
 
                 if (end < 1) {
@@ -108,7 +109,7 @@ public class ImapMailProvider implements MailProvider {
                 Message[] messages = imapFolder.getMessages(start, end);
                 UIDFolder uidFolder = (UIDFolder) imapFolder;
 
-                // getMessages는 오래된→최신. 화면은 최신이 위라서 뒤집는다.
+                // getMessages는 오래된→최신. 화면은 최신이 위라 뒤집는 정렬.
                 List<MailMessageSummaryDto> summaries = new ArrayList<>(messages.length);
 
                 for (int i = messages.length - 1; i >= 0; i--) {
@@ -130,19 +131,20 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * UID로 메시지 상세를 조회한다. unread면 {@code SEEN} 플래그를 켠다.
+     * UID로 메시지 상세 조회. unread면 {@code SEEN} 플래그 설정.
      * <p>
      * mark-as-read 실패 시에도 본문은 반환 (Gmail 경로와 동일).
      * threadId는 IMAP 스레드가 약해 MVP에서 UID와 같은 값.
      *
      * @param userId    JWT subject
-     * @param folder    SPA 폴더 id — UID는 폴더별로 다르므로 반드시 목록과 같은 폴더여야 한다
+     * @param folder    SPA 폴더 id. UID는 폴더별로 달라 목록과 같은 폴더가 필요한 조건
      * @param messageId IMAP UID 문자열
      * @return 상세 DTO
      */
     @Override
     public MailMessageDetailDto getMessage(String userId, String folder, String messageId) {
         return withImapMessage(userId, folder, messageId, Folder.READ_WRITE, "get", (message, uidFolder) -> {
+            // 본문·첨부 조립.
             MailMessageDetailDto detail = toDetail(message, uidFolder, normalizeFolder(folder));
 
             if (!detail.unread()) {
@@ -150,6 +152,7 @@ public class ImapMailProvider implements MailProvider {
             }
 
             try {
+                // 안 읽음이면 SEEN. 실패해도 본문은 반환.
                 message.setFlag(Flags.Flag.SEEN, true);
 
             } catch (MessagingException ex) {
@@ -187,9 +190,10 @@ public class ImapMailProvider implements MailProvider {
         T apply(Message message, UIDFolder uidFolder) throws MessagingException, IOException;
     }
 
-    /** IMAP 폴더를 열고 UID로 메시지를 찾아 작업을 수행한 뒤 폴더를 닫는다. */
+    /** IMAP 폴더를 열고 UID로 메시지를 찾아 작업을 수행한 뒤 폴더를 닫는 공통 흐름. */
     private <T> T withImapMessage(
             String userId, String folder, String messageId, int mode, String action, ImapMessageWork<T> work) {
+        // 메일함 자격과 UID.
         MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
         long uid = parseUid(messageId);
         try (ImapSession session = openImap(creds)) {
@@ -198,6 +202,7 @@ public class ImapMailProvider implements MailProvider {
             try {
                 UIDFolder uidFolder = (UIDFolder) imapFolder;
 
+                // 메시지에 작업 후 finally에서 폴더 닫기.
                 return work.apply(requireMessage(uidFolder, uid, messageId), uidFolder);
 
             } finally {
@@ -209,8 +214,10 @@ public class ImapMailProvider implements MailProvider {
         }
     }
 
+    /** UID로 메시지를 찾고, 없으면 MAIL_MESSAGE_NOT_FOUND. */
     private static Message requireMessage(UIDFolder uidFolder, long uid, String messageId)
             throws MessagingException {
+        // UID가 없으면 없는 메일.
         Message message = uidFolder.getMessageByUID(uid);
         if (message == null) {
             throw new ApiException(ErrorCode.MAIL_MESSAGE_NOT_FOUND, messageId);
@@ -219,6 +226,7 @@ public class ImapMailProvider implements MailProvider {
         return message;
     }
 
+    /** 메시지 id 문자열을 IMAP UID로 파싱. 숫자가 아니면 없는 메일. */
     private static long parseUid(String messageId) {
         try {
             return Long.parseLong(messageId);
@@ -229,7 +237,7 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * SMTP STARTTLS로 메일을 발송한 뒤, IMAP Sent 폴더에 사본을 APPEND한다.
+     * SMTP STARTTLS 발송 뒤, IMAP Sent 폴더에 사본 APPEND.
      * (Mailcow는 SMTP만으로 Sent에 자동 저장하지 않음 — 클라이언트가 저장해야 함)
      *
      * @param userId  JWT subject
@@ -243,13 +251,15 @@ public class ImapMailProvider implements MailProvider {
             MimeMessage message = MailMimeFactory.create(smtpSession, creds.mailAddress(), request);
             Date sentDate = new Date();
             message.setSentDate(sentDate);
+            // SMTP 발송.
             Transport.send(message);
 
-            // Transport.send는 Bcc 헤더를 제거한다. Sent 보관본은 다시 만들어 보낸 사람이 보이게 한다.
+            // Transport.send는 Bcc 헤더를 제거. Sent 보관본은 다시 만들어 보낸 사람이 보이게 하는 저장.
             MimeMessage sentCopy = MailMimeFactory.create(smtpSession, creds.mailAddress(), request);
             sentCopy.setSentDate(sentDate);
             appendToSent(creds, sentCopy);
 
+            // 초안에서 보냈으면 그 UID 삭제.
             if (StringUtils.hasText(request.draftId())) {
                 deleteDraftQuietly(creds, request.draftId());
             }
@@ -260,7 +270,7 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * 발송한 MimeMessage를 IMAP Sent에 읽음(\\Seen) 상태로 저장한다.
+     * 발송한 MimeMessage를 IMAP Sent에 읽음(\\Seen) 상태로 저장.
      */
     private void appendToSent(MailboxCredentialsResponse creds, MimeMessage message)
             throws MessagingException {
@@ -268,6 +278,7 @@ public class ImapMailProvider implements MailProvider {
             Folder sent = openFolder(session.store(), "sent", Folder.READ_WRITE);
 
             try {
+                // 읽음으로 표시한 뒤 Sent에 APPEND.
                 message.setFlag(Flags.Flag.SEEN, true);
                 sent.appendMessages(new Message[] {message});
 
@@ -278,7 +289,7 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * Drafts에 MIME을 APPEND한다. 기존 id가 있으면 새 사본을 넣은 뒤 옛 UID를 지운다.
+     * Drafts에 MIME APPEND. 기존 id가 있으면 새 사본을 넣은 뒤 옛 UID 삭제.
      */
     @Override
     public String saveDraft(String userId, SaveDraftRequest request) {
@@ -286,6 +297,7 @@ public class ImapMailProvider implements MailProvider {
 
         try {
             Session smtpSession = createSmtpSession(creds);
+            // 초안 MIME. DRAFT·읽음 표시 후 APPEND.
             MimeMessage message = MailMimeFactory.create(smtpSession, creds.mailAddress(), request.toSendRequest());
             message.setSentDate(new Date());
             message.setFlag(Flags.Flag.DRAFT, true);
@@ -299,7 +311,7 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * 휴지통이면 UID를 지우고, 그 외 폴더는 Trash로 옮긴다.
+     * 휴지통이면 UID 삭제, 그 외 폴더는 Trash로 이동.
      */
     @Override
     public void deleteMessages(String userId, String folder, List<String> ids) {
@@ -311,6 +323,7 @@ public class ImapMailProvider implements MailProvider {
         String normalized = normalizeFolder(folder);
 
         try (ImapSession session = openImap(creds)) {
+            // 휴지통은 완전 삭제, 나머지는 Trash 이동.
             if ("trash".equals(normalized)) {
                 expungeByUid(session.store(), "trash", ids);
 
@@ -342,7 +355,7 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * 폴더 뱃지용 통계. inbox는 unread, sent/draft는 전체 건수.
+     * 폴더 뱃지용 통계. inbox는 안 읽은 수, sent/draft/trash는 전체 건수.
      */
     @Override
     public List<MailFolderDto> getFolderStats(String userId) {
@@ -351,6 +364,7 @@ public class ImapMailProvider implements MailProvider {
             Folder inbox = openFolder(session.store(), "inbox", Folder.READ_ONLY);
 
             try {
+                // 받은편지함만 안 읽은 수. 나머지는 전체 건수.
                 int unread = inbox.getUnreadMessageCount();
                 int sent = countMessages(session.store(), "sent");
                 int draft = countMessages(session.store(), "draft");
@@ -371,13 +385,14 @@ public class ImapMailProvider implements MailProvider {
     }
 
     @Override
+    /** 받은·보낸 최근 메일에서 상대 주소를 모아 검색어로 거르는 제안. */
     public List<MailRecipientSuggestion> suggestRecipients(String userId, String query) {
         MailboxCredentialsResponse creds = authServerClient.fetchMailboxCredentials(userId);
         String self = creds.mailAddress() == null ? "" : creds.mailAddress().toLowerCase(Locale.ROOT);
         LinkedHashMap<String, MailRecipientSuggestion> byEmail = new LinkedHashMap<>();
 
         try (ImapSession session = openImap(creds)) {
-            // 받은·보낸 최근 메일에서 상대 주소를 모은다. 내 주소는 뺀다.
+            // 받은·보낸 최근 메일에서 상대 주소를 모음. 내 주소는 제외.
             collectRecipientsFromFolder(session.store(), "inbox", 50, self, byEmail);
             collectRecipientsFromFolder(session.store(), "sent", 50, self, byEmail);
 
@@ -393,6 +408,7 @@ public class ImapMailProvider implements MailProvider {
                 .toList();
     }
 
+    /** 폴더 최신 메일에서 From/To/Cc를 후보 맵에 넣는 수집. */
     private void collectRecipientsFromFolder(
             Store store,
             String folder,
@@ -409,6 +425,7 @@ public class ImapMailProvider implements MailProvider {
                 return;
             }
 
+            // 폴더 끝(최신)에서 limit통만.
             int start = Math.max(1, total - limit + 1);
             Message[] messages = imapFolder.getMessages(start, total);
 
@@ -424,6 +441,7 @@ public class ImapMailProvider implements MailProvider {
         }
     }
 
+    /** 주소 배열에서 내 메일을 빼고 후보 맵에 넣는 추가. */
     private static void addAddresses(
             Address[] addresses, String selfEmail, Map<String, MailRecipientSuggestion> byEmail) {
         if (addresses == null) {
@@ -438,6 +456,7 @@ public class ImapMailProvider implements MailProvider {
                 continue;
             }
             String key = email.toLowerCase(Locale.ROOT);
+            // 내 주소는 수신자 후보에서 제외.
             if (key.equals(selfEmail)) {
                 continue;
             }
@@ -446,12 +465,14 @@ public class ImapMailProvider implements MailProvider {
         }
     }
 
+    /** Drafts에 APPEND하고 새 UID 반환. 이전 id가 다르면 그 초안 삭제. */
     private String appendDraft(MailboxCredentialsResponse creds, MimeMessage message, String oldId)
             throws MessagingException {
         try (ImapSession session = openImap(creds)) {
             Folder drafts = openFolder(session.store(), "draft", Folder.READ_WRITE);
 
             try {
+                // 새 초안 APPEND 후 UID. 응답 UID가 없으면 맨 끝 메시지로 대체.
                 IMAPFolder imapFolder = (IMAPFolder) drafts;
                 AppendUID[] appended = imapFolder.appendUIDMessages(new Message[] {message});
                 UIDFolder uidFolder = (UIDFolder) drafts;
@@ -469,6 +490,7 @@ public class ImapMailProvider implements MailProvider {
                     newId = String.valueOf(uidFolder.getUID(drafts.getMessage(total)));
                 }
 
+                // 이전 초안 UID가 다르면 그 사본 삭제.
                 if (StringUtils.hasText(oldId) && !oldId.equals(newId)) {
                     try {
                         Message previous = uidFolder.getMessageByUID(parseUid(oldId));
@@ -491,7 +513,7 @@ public class ImapMailProvider implements MailProvider {
         }
     }
 
-    /** 원본 폴더에서 Trash로 MOVE한다. */
+    /** 원본 폴더에서 Trash로 옮기는 이동. 복원용 출발 표시를 먼저 붙임. */
     private void moveToTrash(Store store, String folder, List<String> ids) throws MessagingException {
         Folder source = openFolder(store, folder, Folder.READ_WRITE);
 
@@ -505,12 +527,14 @@ public class ImapMailProvider implements MailProvider {
                     return;
                 }
 
+                // 복원용 출발 폴더 플래그.
                 Flags origin = new Flags(originKeyword(folder));
 
                 for (Message message : messages) {
                     message.setFlags(origin, true);
                 }
 
+                // Trash로 MOVE.
                 ((IMAPFolder) source).moveMessages(messages, trash);
 
             } finally {
@@ -522,7 +546,7 @@ public class ImapMailProvider implements MailProvider {
         }
     }
 
-    /** 휴지통에서 원래 폴더로 MOVE한다. */
+    /** 휴지통에서 원래 폴더로 되돌리는 복원. */
     private void restoreFromTrash(Store store, List<String> ids) throws MessagingException {
         Folder trash = openFolder(store, "trash", Folder.READ_WRITE);
 
@@ -533,6 +557,7 @@ public class ImapMailProvider implements MailProvider {
                 return;
             }
 
+            // 출발 폴더별로 묶는 분류.
             Map<String, List<Message>> byFolder = new LinkedHashMap<>();
 
             for (Message message : messages) {
@@ -549,6 +574,7 @@ public class ImapMailProvider implements MailProvider {
                 try {
                     Message[] batch = entry.getValue().toArray(Message[]::new);
 
+                    // 출발 표시를 지운 뒤 원래 폴더로 MOVE.
                     for (Message message : batch) {
                         message.setFlags(originFlags, false);
                     }
@@ -565,7 +591,7 @@ public class ImapMailProvider implements MailProvider {
         }
     }
 
-    /** 휴지통으로 넣기 전에 달아 둔 폴더 표시. */
+    /** 휴지통으로 넣기 전에 다는 출발 폴더 표시. */
     private static String originKeyword(String folder) {
         return switch (normalizeFolder(folder)) {
             case "sent" -> ORIGIN_SENT;
@@ -589,7 +615,7 @@ public class ImapMailProvider implements MailProvider {
         return "inbox";
     }
 
-    /** 휴지통 UID에 \\Deleted 를 걸고 expunge한다. */
+    /** 휴지통 UID에 \\Deleted 를 걸고 비우는 완전 삭제. */
     private void expungeByUid(Store store, String folder, List<String> ids) throws MessagingException {
         Folder imapFolder = openFolder(store, folder, Folder.READ_WRITE);
 
@@ -600,6 +626,7 @@ public class ImapMailProvider implements MailProvider {
                 return;
             }
 
+            // \\Deleted 후 expunge.
             for (Message message : messages) {
                 message.setFlag(Flags.Flag.DELETED, true);
             }
@@ -611,6 +638,7 @@ public class ImapMailProvider implements MailProvider {
         }
     }
 
+    /** UID 목록으로 메시지를 찾고, 없거나 잘못된 id는 건너뛰는 조회. */
     private static Message[] findByUid(UIDFolder uidFolder, List<String> ids) throws MessagingException {
         List<Message> found = new ArrayList<>();
 
@@ -621,6 +649,7 @@ public class ImapMailProvider implements MailProvider {
                 message = uidFolder.getMessageByUID(parseUid(id));
 
             } catch (ApiException ex) {
+                // 숫자가 아닌 id는 건너뜀.
                 continue;
             }
 
@@ -632,6 +661,7 @@ public class ImapMailProvider implements MailProvider {
         return found.toArray(Message[]::new);
     }
 
+    /** 발송 후 남은 초안 삭제. 없거나 실패해도 발송은 유지. */
     private void deleteDraftQuietly(MailboxCredentialsResponse creds, String draftId) {
         try (ImapSession session = openImap(creds)) {
             Folder drafts = openFolder(session.store(), "draft", Folder.READ_WRITE);
@@ -645,6 +675,7 @@ public class ImapMailProvider implements MailProvider {
                     return;
                 }
 
+                // 보낸 뒤 남은 초안 UID 삭제.
                 message.setFlag(Flags.Flag.DELETED, true);
                 drafts.expunge();
 
@@ -657,6 +688,7 @@ public class ImapMailProvider implements MailProvider {
         }
     }
 
+    /** 폴더 전체 메시지 건수. */
     private static int countMessages(Store store, String folder) throws MessagingException {
         Folder imapFolder = openFolder(store, folder, Folder.READ_ONLY);
 
@@ -669,7 +701,7 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * IMAPS Store에 연결한다. 호출부는 try-with-resources로 {@link ImapSession}을 닫는다.
+     * IMAPS Store 연결. 호출부는 try-with-resources로 {@link ImapSession}을 닫음.
      *
      * @param creds Auth mailbox 자격 (host/port/주소/비번)
      * @return 연결된 Store 래퍼
@@ -685,13 +717,14 @@ public class ImapMailProvider implements MailProvider {
         props.put("mail.imaps.ssl.checkserveridentity", "false");
         Session session = Session.getInstance(props);
         Store store = session.getStore("imaps");
+        // 메일함 주소·비밀번호로 접속.
         store.connect(creds.imapHost(), creds.imapPort(), creds.mailAddress(), creds.password());
 
         return new ImapSession(store);
     }
 
     /**
-     * SMTP STARTTLS용 Session을 만든다. Authenticator에 메일함 주소/비번을 넣는다.
+     * SMTP STARTTLS용 Session. Authenticator에 메일함 주소·비밀번호.
      *
      * @param creds Auth mailbox 자격
      * @return SMTP Session
@@ -706,6 +739,7 @@ public class ImapMailProvider implements MailProvider {
         props.put("mail.smtp.ssl.checkserveridentity", "false");
 
         return Session.getInstance(props, new jakarta.mail.Authenticator() {
+            /** SMTP 인증에 메일 주소와 비밀번호를 넣는 조회. */
             @Override
             protected jakarta.mail.PasswordAuthentication getPasswordAuthentication() {
                 return new jakarta.mail.PasswordAuthentication(creds.mailAddress(), creds.password());
@@ -714,13 +748,14 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * SPA folder id에 해당하는 IMAP Folder를 연다.
+     * SPA folder id에 해당하는 IMAP Folder 오픈.
      * Sent/Drafts/Trash가 없으면 생성하고, 그래도 실패하면 예외.
      */
     private static Folder openFolder(Store store, String folder, int mode) throws MessagingException {
         String name = toImapFolderName(folder);
         Folder imapFolder = store.getFolder(name);
 
+        // Sent/Drafts/Trash가 없으면 생성. INBOX는 만들지 않음.
         if (!imapFolder.exists()) {
             if ("INBOX".equals(name) || !imapFolder.create(Folder.HOLDS_MESSAGES)) {
                 throw new MessagingException("IMAP folder not found: " + name);
@@ -751,7 +786,7 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * pageToken을 offset 정수로 파싱한다.
+     * pageToken을 offset 정수로 파싱.
      * null/빈 값/비숫자는 0.
      */
     private static int parseOffset(String pageToken) {
@@ -788,7 +823,7 @@ public class ImapMailProvider implements MailProvider {
 
     /**
      * IMAP Message → 상세 DTO.
-     * threadId는 MVP에서 UID와 동일. 본문은 HTML 우선, 인라인 이미지는 data URL로 치환된다.
+     * threadId는 MVP에서 UID와 동일. 본문은 HTML 우선, 인라인 이미지는 data URL 치환.
      */
     private static MailMessageDetailDto toDetail(Message message, UIDFolder uidFolder, String folder)
             throws MessagingException, IOException {
@@ -824,6 +859,7 @@ public class ImapMailProvider implements MailProvider {
             Date sentDate,
             boolean unread) {}
 
+    /** From/To/Cc/Bcc·제목·날짜·안 읽음 여부를 한 번에 읽는 헤더. */
     private static Envelope envelope(Message message, UIDFolder uidFolder) throws MessagingException {
         Address[] from = message.getFrom();
         String fromEmail = extractEmail(from);
@@ -841,7 +877,7 @@ public class ImapMailProvider implements MailProvider {
                 !message.isSet(Flags.Flag.SEEN));
     }
 
-    /** From/To 주소 배열에서 첫 번째 이메일 주소 문자열을 꺼낸다. */
+    /** From/To 주소 배열에서 첫 이메일 추출. */
     private static String extractEmail(Address[] addresses) {
         if (addresses == null || addresses.length == 0) {
             return "";
@@ -853,7 +889,7 @@ public class ImapMailProvider implements MailProvider {
         return addresses[0].toString();
     }
 
-    /** 수신자 헤더 표시용. 여러 주소는 쉼표로 이어 붙인다. */
+    /** 수신자 헤더 표시. 여러 주소는 쉼표로 잇는 문자열. */
     private static String formatAddresses(Address[] addresses) {
         if (addresses == null || addresses.length == 0) {
             return "";
@@ -874,7 +910,7 @@ public class ImapMailProvider implements MailProvider {
     }
 
     /**
-     * 표시 이름(personal)을 꺼낸다.
+     * 표시 이름(personal) 추출.
      * personal이 없으면 이메일 주소, 그것도 없으면 fallback.
      */
     private static String extractPersonal(Address[] addresses, String fallback) {
@@ -925,11 +961,12 @@ public class ImapMailProvider implements MailProvider {
 
     /**
      * IMAP {@link Store}를 try-with-resources로 닫기 위한 래퍼.
-     * {@link #openImap}이 반환하고, list/get/stats에서 사용한다.
+     * {@link #openImap}이 반환하고, list/get/stats에서 쓰는 접속.
      */
     private static final class ImapSession implements AutoCloseable {
         private final Store store;
 
+        /** 열린 Store를 감싸는 생성. */
         private ImapSession(Store store) {
             this.store = store;
         }

@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * GmailBatchParser 순수 단위 테스트.
  * <p>
- * HTTP 요청 없이 multipart batch 응답 문자열에서 JSON body를 안정적으로 추출하는지 본다.
+ * HTTP 요청 없이 multipart batch 응답 문자열에서 JSON body를 안정적으로 추출하는지 보는 검증.
  */
 class GmailBatchParserTest {
 

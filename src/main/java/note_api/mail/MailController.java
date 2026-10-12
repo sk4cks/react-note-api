@@ -45,7 +45,7 @@ public class MailController {
         return mailService.listMessages(jwt.getSubject(), folder, pageToken);
     }
 
-    /** 메일 한 통. IMAP은 folder가 필요하다. */
+    /** 메일 한 통. IMAP은 folder가 필요한 상세 조회. */
     @GetMapping("/messages/{id}")
     public MailMessageDetailDto getMessage(
             @AuthenticationPrincipal Jwt jwt,
@@ -67,7 +67,7 @@ public class MailController {
                 .filename(attachment.filename(), StandardCharsets.UTF_8)
                 .build();
 
-        // 브라우저가 파일명으로 저장하게 Content-Disposition을 붙인다.
+        // 브라우저가 파일명으로 저장하게 Content-Disposition을 붙이는 다운로드.
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
                 .contentType(MediaType.parseMediaType(attachment.contentType()))
@@ -86,21 +86,21 @@ public class MailController {
         mailService.sendMessage(jwt.getSubject(), request);
     }
 
-    /** 임시저장. 받는 사람·제목이 없어도 된다. */
+    /** 임시저장. 받는 사람·제목·본문이 비어도 되는 저장. */
     @PostMapping("/drafts")
     public MailDraftResponse saveDraft(
             @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody SaveDraftRequest request) {
         return mailService.saveDraft(jwt.getSubject(), request);
     }
 
-    /** 메일 삭제. 휴지통이 아니면 휴지통으로 옮긴다. */
+    /** 휴지통이 아니면 휴지통으로 옮기는 메일 삭제. */
     @PostMapping("/messages/delete")
     public void deleteMessages(
             @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody DeleteMessagesRequest request) {
         mailService.deleteMessages(jwt.getSubject(), request.folder(), request.ids());
     }
 
-    /** 휴지통 메일을 원래 편지함으로 되돌린다. */
+    /** 휴지통 메일을 원래 편지함으로 되돌리는 복원. */
     @PostMapping("/messages/restore")
     public void restoreMessages(
             @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody RestoreMessagesRequest request) {

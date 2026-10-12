@@ -15,14 +15,16 @@ public class RefreshTokenCookieService {
 
     private final RefreshTokenCookieProperties properties;
 
+    /** refresh cookie 이름·경로·SameSite 설정 주입. */
     public RefreshTokenCookieService(RefreshTokenCookieProperties properties) {
         this.properties = properties;
     }
 
-    /** 요청 cookie에서 refresh_token 값을 읽는다. */
+    /** 요청 cookie에서 refresh_token 값 조회. */
     public String readRefreshToken(HttpServletRequest request) {
         Cookie[] cookies = request.getCookies();
 
+        // cookie가 없으면 refresh 없음.
         if (cookies == null) {
             return null;
         }
@@ -37,9 +39,10 @@ public class RefreshTokenCookieService {
         return null;
     }
 
-    /** 로그인·갱신 응답에 Set-Cookie로 넣는다. 값이 비면 아무 것도 안 한다. */
+    /** 로그인·갱신 응답에 Set-Cookie로 저장. 값이 비면 생략. */
     public void writeRefreshToken(HttpServletResponse response, String refreshToken) {
         if (!StringUtils.hasText(refreshToken)) {
+            // 빈 토큰은 cookie를 덮지 않음.
             return;
         }
 
@@ -48,12 +51,12 @@ public class RefreshTokenCookieService {
                 buildCookie(refreshToken, Duration.ofDays(properties.maxAgeDays())).toString());
     }
 
-    /** maxAge=0 으로 cookie를 지운다. */
+    /** maxAge=0 으로 cookie 삭제. */
     public void clearRefreshToken(HttpServletResponse response) {
         response.addHeader("Set-Cookie", buildCookie("", Duration.ZERO).toString());
     }
 
-    /** HttpOnly + SameSite. JS에서 읽지 못한다. */
+    /** HttpOnly + SameSite. JS에서 읽지 못하는 cookie. */
     private ResponseCookie buildCookie(String value, Duration maxAge) {
         return ResponseCookie.from(properties.name(), value)
                 .httpOnly(true)

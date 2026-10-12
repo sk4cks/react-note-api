@@ -14,12 +14,13 @@ import java.util.List;
 import java.util.regex.Matcher;
 
 /**
- * Gmail message/thread JSON을 react-note 메일 DTO로 변환한다.
+ * Gmail message/thread JSON을 react-note 메일 DTO로 변환.
  */
 final class GmailMessageParser {
 
-    /** thread 목록은 최신 message 하나를 대표 카드로 내려준다. */
+    /** thread 목록은 최신 message 하나를 대표 카드로 내리는 요약. */
     MailMessageSummaryDto toThreadSummary(String folder, JsonNode thread) {
+        // 스레드에서 가장 최근 메시지 한 통.
         JsonNode latestMessage = findLatestMessage(thread.path("messages"));
 
         if (latestMessage == null) {
@@ -48,8 +49,9 @@ final class GmailMessageParser {
                 unread);
     }
 
-    /** message 상세는 folder / sender / body / unread를 한 번에 계산해 detail DTO로 만든다. */
+    /** message 상세는 folder / sender / body / unread를 한 번에 계산해 detail DTO로 만드는 변환. */
     MailMessageDetailDto toDetail(JsonNode body) {
+        // 헤더·폴더·본문·첨부를 한 DTO로 모으는 변환.
         String id = body.path("id").asText();
         HeaderValues headers = extractHeaders(body.path("payload"));
         ParsedFrom parsedFrom = parseFrom(headers.from());
@@ -77,8 +79,9 @@ final class GmailMessageParser {
                 attachments);
     }
 
-    /** message payload에서 attachmentId가 일치하는 첨부를 찾는다. 없으면 null. */
+    /** message payload에서 attachmentId가 일치하는 첨부 탐색. 없으면 null. */
     MailAttachmentDto findAttachment(JsonNode body, String attachmentId) {
+        // payload의 첨부 목록에서 id 일치.
         List<MailAttachmentDto> attachments = new ArrayList<>();
         collectAttachments(body.path("payload"), attachments);
 
@@ -88,7 +91,7 @@ final class GmailMessageParser {
                 .orElse(null);
     }
 
-    /** payload tree에서 filename + attachmentId를 가진 part를 첨부로 모은다. */
+    /** payload tree에서 filename + attachmentId를 가진 part를 첨부로 모으는 수집. */
     private static void collectAttachments(JsonNode part, List<MailAttachmentDto> out) {
         String filename = part.path("filename").asText("");
         String attachmentId = part.path("body").path("attachmentId").asText("");
@@ -143,6 +146,7 @@ final class GmailMessageParser {
 
     /** Gmail label 우선순위로 화면용 folder id를 결정 */
     private static String resolveFolder(JsonNode body) {
+        // trash, draft, inbox, sent 순. 없으면 받은편지함.
         if (hasLabel(body, GmailApiConstants.LABEL_TRASH)) {
             return GmailApiConstants.FOLDER_TRASH;
         }
@@ -159,6 +163,7 @@ final class GmailMessageParser {
         return GmailApiConstants.FOLDER_INBOX;
     }
 
+    /** labelIds에 해당 라벨이 있는지 확인. */
     private static boolean hasLabel(JsonNode body, String label) {
         JsonNode labels = body.path("labelIds");
         if (!labels.isArray()) {
@@ -173,7 +178,9 @@ final class GmailMessageParser {
         return false;
     }
 
+    /** payload headers에서 From·To·Cc·Bcc·Subject·Date만 뽑는 추출. */
     private static HeaderValues extractHeaders(JsonNode payload) {
+        // From, To, Cc, Bcc, Subject, Date만.
         String from = "";
         String to = "";
         String cc = "";
@@ -203,6 +210,7 @@ final class GmailMessageParser {
 
     /** HTML 본문 우선, 없으면 plain text, 둘 다 없으면 빈 문자열 */
     private static BodyContent extractBody(JsonNode payload) {
+        // HTML이 있으면 HTML, 없으면 plain.
         String html = findBodyByMimeType(payload, GmailApiConstants.MIME_TEXT_HTML);
 
         if (StringUtils.hasText(html)) {
@@ -218,7 +226,7 @@ final class GmailMessageParser {
         return new BodyContent("", GmailApiConstants.MIME_TEXT_PLAIN);
     }
 
-    /** payload tree를 재귀 순회하며 원하는 mimeType 본문을 찾는다. */
+    /** payload tree를 재귀 순회하며 원하는 mimeType 본문을 찾는 탐색. */
     private static String findBodyByMimeType(JsonNode payload, String mimeType) {
         String mime = payload.path("mimeType").asText("");
         String bodyData = payload.path("body").path("data").asText(null);
@@ -240,13 +248,14 @@ final class GmailMessageParser {
         return "";
     }
 
+    /** Gmail body data(base64url)를 UTF-8 문자열로 디코딩. */
     private static String decodeBase64Url(String data) {
         byte[] decoded = Base64.getUrlDecoder().decode(data);
 
         return new String(decoded, StandardCharsets.UTF_8);
     }
 
-    /** Gmail From 헤더를 "표시 이름 + 이메일"로 분리한다. */
+    /** Gmail From 헤더를 표시 이름과 이메일로 나누는 분리. */
     private static ParsedFrom parseFrom(String fromHeader) {
         if (!StringUtils.hasText(fromHeader)) {
             return new ParsedFrom("Unknown", "");

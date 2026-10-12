@@ -21,19 +21,19 @@ public interface MailProvider {
 
     void sendMessage(String userId, SendMailRequest request);
 
-    /** 임시보관함에 저장하고 메시지 id를 돌려준다. request.id가 있으면 그 초안을 교체한다. */
+    /** 임시보관함 저장 후 메시지 id 반환. request.id가 있으면 그 초안 교체. */
     String saveDraft(String userId, SaveDraftRequest request);
 
     /**
-     * 메일을 지운다. folder가 trash면 완전 삭제, 그 외는 휴지통으로 옮긴다.
+     * 메일 삭제. folder가 trash면 완전 삭제, 그 외는 휴지통 이동.
      */
     void deleteMessages(String userId, String folder, List<String> ids);
 
-    /** 휴지통 메일을 들어오기 전 편지함으로 되돌린다. 표시가 없으면 받은편지함. */
+    /** 휴지통 메일을 들어오기 전 편지함으로 되돌리는 복원. 표시가 없으면 받은편지함. */
     void restoreMessages(String userId, List<String> ids);
 
     List<MailFolderDto> getFolderStats(String userId);
 
-    /** 최근 메일 헤더에서 수신자 후보를 모은다. query가 있으면 필터. */
+    /** 최근 메일 헤더에서 수신자 후보를 모으는 조회. query가 있으면 필터. */
     List<MailRecipientSuggestion> suggestRecipients(String userId, String query);
 }

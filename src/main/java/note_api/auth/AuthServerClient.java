@@ -37,12 +37,12 @@ import java.util.Map;
 /**
  * Auth Server HTTP 클라이언트 (BFF → Auth).
  * <p>
- * 프론트는 Auth Server(:9000)를 직접 호출하지 않고, 이 클라이언트를 통해서만 접근한다.
+ * 프론트는 Auth Server(:9000)를 직접 호출하지 않고, 이 클라이언트만 거치는 접근.
  * <ul>
  *   <li>{@code auth-server.base-url} — Pod/서버 간 호출 (로컬: localhost:9000, k8s: ClusterIP)</li>
  *   <li>{@code auth-server.public-url} — 브라우저 redirect 용 (nip.io 등 외부 URL)</li>
  * </ul>
- * Internal API({@code X-Internal-Api-Key})는 SNS·Gmail 토큰·메일함·주소록에 사용한다.
+ * Internal API({@code X-Internal-Api-Key})는 SNS·Gmail 토큰·메일함·주소록 호출.
  * login/register/token 은 Auth의 public {@code /auth/**}, {@code /oauth2/token} 경로.
  */
 @Component
@@ -58,6 +58,7 @@ public class AuthServerClient {
     private final String clientSecret;
     private final String internalApiKey;
 
+    /** Auth base URL·클라이언트 시크릿·내부 API 키 주입. */
     public AuthServerClient(
             RestTemplate restTemplate,
             @Value("${auth-server.base-url}") String authServerBaseUrl,
@@ -136,6 +137,7 @@ public class AuthServerClient {
                 url, HttpMethod.GET, new HttpEntity<>(internalHeaders()), SocialUserStatusResponse.class);
         SocialUserStatusResponse body = response.getBody();
 
+        // 응답이 없으면 미등록.
         if (body == null) {
             return new SocialUserStatus(false, null);
         }
@@ -178,7 +180,7 @@ public class AuthServerClient {
         form.add("client_id", clientId);
         form.add("client_secret", clientSecret);
 
-        // Auth Server POST /oauth2/token. SPA는 이 BFF만 호출한다.
+        // Auth Server POST /oauth2/token. SPA는 이 BFF만 호출.
         return postToken(form);
     }
 
@@ -193,6 +195,7 @@ public class AuthServerClient {
         form.add("client_id", clientId);
         form.add("client_secret", clientSecret);
 
+        // refresh grant로 access·갱신 refresh 발급.
         return postToken(form);
     }
 
@@ -352,11 +355,12 @@ public class AuthServerClient {
 
     /**
      * 검색어 q를 한 번만 인코딩한 URI.
-     * RestTemplate.exchange(String)은 한글을 한 번 더 인코딩한다.
+     * RestTemplate.exchange(String)은 한글을 한 번 더 인코딩하므로 URI로 넘기는 조회.
      */
     private URI userQueryUri(String userId, String suffix, String q) {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(userPath(userId, suffix));
         if (StringUtils.hasText(q)) {
+            // 검색어는 여기서 한 번만 인코딩.
             builder.queryParam("q", q);
         }
 
@@ -372,7 +376,7 @@ public class AuthServerClient {
         return body == null ? List.of() : body;
     }
 
-    /** POST. body가 없으면 헤더만 보낸다. */
+    /** POST. body가 없으면 헤더만 보내는 호출. */
     private <T> T exchange(URI uri, HttpMethod method, Object body, Class<T> type) {
         HttpEntity<?> entity = body == null
                 ? new HttpEntity<>(internalHeaders())

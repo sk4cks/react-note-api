@@ -27,7 +27,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
  * AuthServerClient 단위 테스트.
  * <p>
  * RestTemplate 실제 네트워크 호출 대신 MockRestServiceServer로 요청 URL, 헤더, form body를 검증.
- * AuthServiceTest가 "위임/예외 래핑"을 본다면, 여기서는 "Auth Server HTTP 요청 구성이 맞는지"를 본다.
+ * AuthServiceTest가 위임·예외 래핑을 보면, 여기서는 Auth Server HTTP 요청 구성 검증.
  */
 class AuthServerClientTest {
 

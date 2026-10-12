@@ -22,16 +22,19 @@ public class GlobalExceptionHandler {
 
     private final ObjectMapper objectMapper;
 
+    /** Auth JSON 파싱용 ObjectMapper 주입. */
     public GlobalExceptionHandler(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 
+    /** ApiException의 status와 code·message를 ErrorResponse로 반환. */
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ErrorResponse> handleApiException(ApiException ex) {
         return ResponseEntity.status(ex.getErrorCode().getStatus())
                 .body(ErrorResponse.from(ex));
     }
 
+    /** 필드 검증 실패를 칸별 메시지로 모아 400 응답. */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ValidationErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new LinkedHashMap<>();
@@ -48,7 +51,7 @@ public class GlobalExceptionHandler {
                 .body(new ValidationErrorResponse("VALIDATION_FAILED", message, errors));
     }
 
-    /** 기본 "공백일 수 없습니다" 대신 어느 칸인지 밝힌다. */
+    /** 기본 "공백일 수 없습니다" 대신 어느 칸인지 밝히는 메시지. */
     private static String describeFieldError(FieldError fieldError) {
         String raw = fieldError.getDefaultMessage();
 
@@ -59,6 +62,7 @@ public class GlobalExceptionHandler {
         return blankMessage(fieldError.getField());
     }
 
+    /** Bean Validation 기본 공백 문구인지 확인. */
     private static boolean isGenericBlankMessage(String raw) {
         String normalized = raw.trim();
 
@@ -70,6 +74,7 @@ public class GlobalExceptionHandler {
                 || "must not be null".equalsIgnoreCase(normalized);
     }
 
+    /** 필드 이름에 맞는 빈 값 안내 문구. */
     private static String blankMessage(String field) {
         String leaf = field;
         int dot = leaf.lastIndexOf('.');
@@ -107,7 +112,7 @@ public class GlobalExceptionHandler {
         body.put("error", resolved != null ? resolved.getReasonPhrase() : "Error");
         body.put("path", request.getRequestURI());
 
-        // Auth가 준 JSON의 code/message를 프론트가 그대로 쓰게 복사한다.
+        // Auth가 준 JSON의 code/message를 프론트가 그대로 쓰게 복사.
         if (StringUtils.hasText(ex.getResponseBody())) {
             try {
                 JsonNode node = objectMapper.readTree(ex.getResponseBody());

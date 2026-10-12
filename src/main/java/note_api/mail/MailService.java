@@ -16,12 +16,13 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Locale;
 
-/** Gmail / IMAP 구현체 중 하나를 골라 프론트 메일 API에 넘긴다. */
+/** Gmail / IMAP 구현체 중 하나를 골라 프론트 메일 API에 넘기는 분기. */
 @Service
 public class MailService {
 
     private final MailProvider mailProvider;
 
+    /** MAIL_PROVIDER가 imap이면 Mailcow, 그 외에는 Gmail 구현체 선택. */
     public MailService(
             @Value("${app.mail.provider:imap}") String provider,
             GmailMailProvider gmailMailProvider,
@@ -53,17 +54,17 @@ public class MailService {
         mailProvider.sendMessage(principal, request);
     }
 
-    /** 임시저장. 같은 초안이면 id를 유지·교체한다. */
+    /** 임시저장. 같은 초안이면 id를 유지·교체. */
     public MailDraftResponse saveDraft(String principal, SaveDraftRequest request) {
         return new MailDraftResponse(mailProvider.saveDraft(principal, request));
     }
 
-    /** 메일 삭제. 휴지통이 아니면 휴지통으로 옮긴다. */
+    /** 휴지통이 아니면 휴지통으로 옮기는 메일 삭제. */
     public void deleteMessages(String principal, String folder, List<String> ids) {
         mailProvider.deleteMessages(principal, folder, ids);
     }
 
-    /** 휴지통 메일을 원래 편지함으로 되돌린다. */
+    /** 휴지통 메일을 원래 편지함으로 되돌리는 복원. */
     public void restoreMessages(String principal, List<String> ids) {
         mailProvider.restoreMessages(principal, ids);
     }

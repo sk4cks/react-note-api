@@ -4,6 +4,7 @@ import java.util.regex.Pattern;
 
 final class GmailApiConstants {
 
+    /** 인스턴스 없이 상수만 쓰는 유틸. */
     private GmailApiConstants() {}
 
     static final String BATCH_URL = "https://www.googleapis.com/batch/gmail/v1";

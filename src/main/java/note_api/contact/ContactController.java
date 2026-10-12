@@ -26,7 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** 주소록·그룹·공유. Auth Server 내부 API를 프록시하고, 수신자 제안은 메일 히스토리와 합친다. */
+/** 주소록·그룹·공유. Auth Server 내부 API 프록시, 수신자 제안은 메일 히스토리와 합침. */
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -35,6 +35,7 @@ public class ContactController {
     private final AuthServerClient authServerClient;
     private final MailService mailService;
 
+    /** JWT sub로 Auth 주소록 조회. q가 있으면 검색. */
     @GetMapping("/contacts")
     public List<ContactResponse> listContacts(
             @AuthenticationPrincipal Jwt jwt, @RequestParam(name = "q", required = false) String q) {
@@ -87,7 +88,7 @@ public class ContactController {
         return ResponseEntity.noContent().build();
     }
 
-    /** 그룹 멤버를 통째로 교체한다. */
+    /** 그룹 멤버를 통째로 갈아끼우는 저장. */
     @PostMapping("/contact-groups/{id}/members")
     public ContactGroupResponse replaceMembers(
             @AuthenticationPrincipal Jwt jwt,
@@ -103,7 +104,7 @@ public class ContactController {
         return authServerClient.listContactGroupShares(jwt.getSubject(), id);
     }
 
-    /** 그룹을 다른 USER_ID에 공유한다. */
+    /** 그룹을 다른 USER_ID에 넘기는 공유. */
     @PostMapping("/contact-groups/{id}/shares")
     public ContactGroupShareResponse shareGroup(
             @AuthenticationPrincipal Jwt jwt,
@@ -112,7 +113,7 @@ public class ContactController {
         return authServerClient.shareContactGroup(jwt.getSubject(), id, body);
     }
 
-    /** 공유 회수. 공유받은 쪽에서 나가기에도 쓴다. */
+    /** 공유 회수. 공유받은 쪽의 나가기에도 쓰는 삭제. */
     @PostMapping("/contact-groups/{id}/shares/{shareId}/delete")
     public ResponseEntity<Void> revokeShare(
             @AuthenticationPrincipal Jwt jwt, @PathVariable("id") Long id, @PathVariable("shareId") Long shareId) {
@@ -134,7 +135,7 @@ public class ContactController {
         List<RecipientSuggestItem> merged = new ArrayList<>(fromContacts);
         Set<String> seenEmails = new LinkedHashSet<>();
 
-        // 주소록에 이미 있는 메일은 히스토리에서 빼서 중복 칩을 막는다.
+        // 주소록에 이미 있는 메일은 히스토리에서 빼 중복 칩을 막는 병합.
         for (RecipientSuggestItem item : fromContacts) {
             if ("contact".equals(item.type()) && item.email() != null) {
                 seenEmails.add(item.email().toLowerCase(Locale.ROOT));

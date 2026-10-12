@@ -8,10 +8,11 @@ import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
 
-/** Auth Server HTTP 호출용 RestTemplate. JDK 클라이언트로 401 body를 유지한다. */
+/** Auth Server HTTP 호출용 RestTemplate. JDK 클라이언트로 401 body 유지. */
 @Configuration
 public class RestTemplateConfig {
 
+    /** 401 본문을 유지하는 JDK 클라이언트 RestTemplate 생성. */
     @Bean
     public RestTemplate restTemplate() {
         // SimpleClientHttpRequestFactory(HttpURLConnection) 는 401 body 를 비우는 경우가 있음

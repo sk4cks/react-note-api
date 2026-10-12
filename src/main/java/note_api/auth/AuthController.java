@@ -34,6 +34,7 @@ public class AuthController {
     private final AuthService authService;
     private final RefreshTokenCookieService refreshTokenCookieService;
 
+    /** 로그인 처리와 refresh cookie 저장 의존성 주입. */
     public AuthController(AuthService authService, RefreshTokenCookieService refreshTokenCookieService) {
         this.authService = authService;
         this.refreshTokenCookieService = refreshTokenCookieService;
@@ -42,9 +43,10 @@ public class AuthController {
     /** 로컬 로그인. refresh는 cookie, body에는 access만. */
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(@RequestBody LoginRequest request, HttpServletResponse response) {
+        // Auth 로그인.
         TokenResponse tokens = authService.login(request);
 
-        // refresh는 cookie, JSON에는 access만 남긴다.
+        // refresh는 cookie, JSON에는 access만 남기는 응답.
         return okWithRefreshCookie(tokens, response);
     }
 
@@ -93,6 +95,7 @@ public class AuthController {
     /** refresh_token은 HttpOnly cookie — body 없음 */
     @PostMapping("/refresh")
     public ResponseEntity<TokenResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
+        // cookie의 refresh. 없으면 401.
         String refreshToken = refreshTokenCookieService.readRefreshToken(request);
 
         if (!StringUtils.hasText(refreshToken)) {
@@ -101,11 +104,12 @@ public class AuthController {
 
         TokenResponse tokens = authService.refreshToken(refreshToken);
 
-        // Auth가 새 refresh를 주면 cookie를 갈아끼운다.
+        // Auth가 새 refresh를 주면 cookie를 갈아끼우는 갱신.
         if (StringUtils.hasText(tokens.refreshToken())) {
             refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
         }
 
+        // JSON에는 access만.
         return ResponseEntity.ok(withoutRefreshToken(tokens));
     }
 
@@ -117,7 +121,7 @@ public class AuthController {
         return ResponseEntity.noContent().build();
     }
 
-    /** refresh를 cookie에 넣고 JSON에서는 뺀다. */
+    /** refresh는 cookie에 넣고 JSON에서는 빼는 응답. */
     private ResponseEntity<TokenResponse> okWithRefreshCookie(
             TokenResponse tokens, HttpServletResponse response) {
         refreshTokenCookieService.writeRefreshToken(response, tokens.refreshToken());
@@ -125,7 +129,7 @@ public class AuthController {
         return ResponseEntity.ok(withoutRefreshToken(tokens));
     }
 
-    /** JSON에 refresh_token을 넣지 않는다. cookie로만 준다. */
+    /** JSON에서 refresh_token을 빼고 cookie로만 주는 복사. */
     private static TokenResponse withoutRefreshToken(TokenResponse tokens) {
         return new TokenResponse(
                 tokens.accessToken(),

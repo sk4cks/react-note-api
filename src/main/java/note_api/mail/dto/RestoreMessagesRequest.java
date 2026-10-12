@@ -5,7 +5,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 
-/** 휴지통 메일을 원래 편지함으로 되돌린다. */
+/** 휴지통 메일을 원래 편지함으로 되돌리는 복원. */
 public record RestoreMessagesRequest(
         @NotEmpty(message = "복원할 메일을 선택해 주세요.") List<String> ids) {
 

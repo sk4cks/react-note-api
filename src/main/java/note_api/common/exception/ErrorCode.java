@@ -22,6 +22,7 @@ public enum ErrorCode {
         this.defaultMessage = defaultMessage;
     }
 
+    /** HTTP 상태 조회. */
     public HttpStatus getStatus() {
         return status;
     }

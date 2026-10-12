@@ -77,8 +77,8 @@ class MailMimeFactoryTest {
     }
 
     /**
-     * 한글 파일명은 RFC 2231({@code filename*=UTF-8''..})로만 인코딩돼야 한다.
-     * encoded-word로 미리 바꾸면 파라미터 분할과 겹쳐 base64가 잘린다.
+     * 한글 파일명은 RFC 2231({@code filename*=UTF-8''..})로만 인코딩돼야 하는 조건.
+     * encoded-word로 미리 바꾸면 파라미터 분할과 겹쳐 base64가 잘리는 문제.
      */
     @Test
     void create_encodesKoreanFilenameAsRfc2231() throws Exception {
@@ -95,7 +95,7 @@ class MailMimeFactoryTest {
         assertThat(mime).doesNotContain("=?UTF-8?B?");
     }
 
-    /** macOS NFD 파일명도 헤더에는 NFC percent-encoding으로 나가야 한다. */
+    /** macOS NFD 파일명도 헤더에는 NFC percent-encoding으로 나가야 하는 조건. */
     @Test
     void create_normalizesNfdFilenameToNfc() throws Exception {
         String nfdName = Normalizer.normalize("보고서.pdf", Normalizer.Form.NFD);

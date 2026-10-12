@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * GmailMessageParser 순수 단위 테스트.
  * <p>
- * header/body/folder/unread 규칙을 JSON fixture만으로 검증해서 GmailClient HTTP 테스트를 가볍게 유지한다.
+ * header/body/folder/unread 규칙을 JSON fixture만으로 검증해서 GmailClient HTTP 테스트를 가볍게 유지.
  */
 class GmailMessageParserTest {
 

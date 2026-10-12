@@ -18,6 +18,7 @@ public record SendMailRequest(
         List<@Valid MailAttachmentRequest> attachments,
         String draftId) {
 
+    /** null 목록은 빈 리스트로, 첨부만 있으면 빈 본문을 HTML 자리로 채우는 정규화. */
     public SendMailRequest {
         to = to == null ? List.of() : List.copyOf(to);
         cc = cc == null ? List.of() : List.copyOf(cc);
@@ -26,12 +27,13 @@ public record SendMailRequest(
         draftId = StringUtils.hasText(draftId) ? draftId : null;
         body = body == null ? "" : body;
 
-        // 첨부만 있어도 보낸다. 빈 본문은 MIME 자리만 채운다.
+        // 첨부만 있어도 보내는 요청. 빈 본문은 MIME 자리만 채움.
         if (!StringUtils.hasText(body) && !attachments.isEmpty()) {
             body = "<p></p>";
         }
     }
 
+    /** draftId 없이 MIME 생성용 요청을 만드는 생성. */
     public SendMailRequest(
             List<String> to,
             List<String> cc,

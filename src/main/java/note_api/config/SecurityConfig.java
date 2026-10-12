@@ -15,6 +15,7 @@ public class SecurityConfig {
 
     private final CorsProperties corsProperties;
 
+    /** CORS 허용 origin 설정 주입. */
     public SecurityConfig(CorsProperties corsProperties) {
         this.corsProperties = corsProperties;
     }
@@ -23,7 +24,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests(request -> request
-                // SNS 온보딩은 임시 JWT가 있어야 한다.
+                // SNS 온보딩은 임시 JWT가 있어야 하는 인증 경로.
                 .requestMatchers("/api/auth/onboarding-status", "/api/auth/social/complete").authenticated()
                 .requestMatchers("/api/auth/**", "/error").permitAll()
                 .requestMatchers("/api/**").authenticated()

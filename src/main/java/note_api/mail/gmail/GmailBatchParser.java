@@ -11,7 +11,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Gmail batch(multipart/mixed) 응답에서 JSON body만 추출한다.
+ * Gmail batch(multipart/mixed) 응답에서 JSON body만 추출.
  */
 final class GmailBatchParser {
 
@@ -22,8 +22,8 @@ final class GmailBatchParser {
     }
 
     /**
-     * Gmail batch 응답은 정상적으로는 multipart/mixed + boundary 구조다.
-     * 다만 boundary가 없거나 일부가 깨진 응답도 대비해서 JSON 스캔 fallback을 둔다.
+     * Gmail batch 응답은 정상적으로는 multipart/mixed + boundary 구조.
+     * boundary가 없거나 일부가 깨진 응답은 JSON 스캔 fallback.
      */
     List<JsonNode> parseBatchResponse(String responseBody, String boundary) {
         if (!StringUtils.hasText(responseBody)) {
@@ -32,6 +32,7 @@ final class GmailBatchParser {
 
         List<JsonNode> result = new ArrayList<>();
 
+        // boundary가 있으면 part를 나눠 JSON만 수집.
         if (StringUtils.hasText(boundary)) {
             String[] parts = responseBody.split("--" + Pattern.quote(boundary));
 
@@ -51,11 +52,11 @@ final class GmailBatchParser {
             }
         }
 
-        // boundary가 깨진 응답은 JSON object를 직접 스캔한다.
+        // boundary가 깨진 응답은 JSON object를 직접 스캔.
         return parseBatchJsonFallback(responseBody);
     }
 
-    /** Content-Type: multipart/mixed; boundary=... 에서 boundary만 꺼낸다. */
+    /** Content-Type: multipart/mixed; boundary=... 에서 boundary만 꺼내는 추출. */
     String extractBatchBoundary(String contentType) {
         Matcher matcher = GmailApiConstants.BATCH_BOUNDARY.matcher(contentType);
         if (matcher.find()) {
@@ -104,7 +105,7 @@ final class GmailBatchParser {
         return Optional.of(part.substring(jsonStart, jsonEnd + 1));
     }
 
-    /** 문자열/escape를 고려해 균형이 맞는 JSON object의 끝 위치를 찾는다. */
+    /** 문자열/escape를 고려해 균형이 맞는 JSON object의 끝 위치 탐색. */
     private static int findJsonObjectEnd(String text, int start) {
         int depth = 0;
         boolean inString = false;

@@ -30,8 +30,8 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 /**
  * GmailClient contract 테스트.
  * <p>
- * MockRestServiceServer로 Gmail API 요청 URL/헤더/body와 대표 응답 매핑을 검증한다.
- * 상세 파싱 규칙 자체는 GmailBatchParserTest, GmailMessageParserTest에서 더 작게 검증한다.
+ * MockRestServiceServer로 Gmail API 요청 URL/헤더/body와 대표 응답 매핑 검증.
+ * 상세 파싱 규칙 자체는 GmailBatchParserTest, GmailMessageParserTest에서 더 작게 검증.
  */
 class GmailClientTest {
 
@@ -209,7 +209,7 @@ class GmailClientTest {
 
     /**
      * 폴더 통계 — draft label batch 조회 + inbox unread thread count paging.
-     * 현재 구현 기준 sent count는 별도 조회하지 않으므로 0으로 내려간다.
+     * 현재 구현 기준 sent count는 별도 조회하지 않으므로 0으로 내려가는 결과.
      */
     @Test
     void getFolderStats_fetchesDraftLabelAndCountsUnreadInboxAcrossPages() {

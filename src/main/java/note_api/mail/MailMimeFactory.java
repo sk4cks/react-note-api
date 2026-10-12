@@ -28,8 +28,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 본문 HTML + 인라인 이미지(data URL) + 첨부파일을 multipart MIME으로 만든다.
- * Gmail raw send와 IMAP SMTP가 같은 경로를 쓴다.
+ * 본문 HTML + 인라인 이미지(data URL) + 첨부파일을 multipart MIME으로 만드는 조립.
+ * Gmail raw send와 IMAP SMTP가 같은 경로.
  */
 public final class MailMimeFactory {
 
@@ -40,8 +40,10 @@ public final class MailMimeFactory {
             "src=(['\"])data:(image/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\\r\\n]+)\\1",
             Pattern.CASE_INSENSITIVE);
 
+    /** 인스턴스 없이 static만 쓰는 유틸. */
     private MailMimeFactory() {}
 
+    /** From·수신자·제목·본문·첨부를 담은 MimeMessage 생성. */
     public static MimeMessage create(Session session, String from, SendMailRequest request)
             throws MessagingException {
         MimeMessage message = new MimeMessage(session);
@@ -55,10 +57,11 @@ public final class MailMimeFactory {
         setRecipients(message, Message.RecipientType.BCC, request.bcc());
         message.setSubject(request.subject() != null ? request.subject() : "", "UTF-8");
 
-        // HTML 안의 data URL 이미지는 cid 인라인으로 바꾼다.
+        // HTML 안의 data URL 이미지는 cid 인라인으로 바꾸는 치환.
         InlineHtml inline = rewriteDataUrls(request.body() != null ? request.body() : "");
         List<DecodedAttachment> files = decodeAttachments(request.attachments());
 
+        // 첨부 개수·전체 바이트 한도.
         if (files.size() > MAX_ATTACHMENTS) {
             throw new ApiException(ErrorCode.MAIL_ATTACHMENT_TOO_MANY, MAX_ATTACHMENTS);
         }
@@ -85,13 +88,13 @@ public final class MailMimeFactory {
         MimeBodyPart htmlPart = htmlBodyPart(inline.html());
 
         if (!hasFiles) {
-            // 인라인 이미지만 있으면 related 하나로 끝낸다.
+            // 인라인 이미지만 있으면 related 하나로 끝내는 본문.
             message.setContent(relatedMultipart(htmlPart, inline.parts()));
 
             return message;
         }
 
-        // 첨부가 있으면 mixed. 인라인 이미지는 related로 감싼다.
+        // 첨부가 있으면 mixed. 인라인 이미지는 related로 감싸는 조립.
         MimeMultipart mixed = new MimeMultipart("mixed");
         if (hasInline) {
             MimeBodyPart relatedWrapper = new MimeBodyPart();
@@ -106,6 +109,7 @@ public final class MailMimeFactory {
         return message;
     }
 
+    /** 발송용 MimeMessage를 RFC822 바이트로 변환. */
     public static byte[] toRfc822Bytes(String from, SendMailRequest request) {
         try {
             MimeMessage message = create(Session.getInstance(new Properties()), from, request);
@@ -120,6 +124,7 @@ public final class MailMimeFactory {
         }
     }
 
+    /** 주소 목록을 To/Cc/Bcc 헤더에 넣는 설정. */
     private static void setRecipients(
             MimeMessage message, Message.RecipientType type, List<String> addresses)
             throws MessagingException {
@@ -129,6 +134,7 @@ public final class MailMimeFactory {
         message.setRecipients(type, InternetAddress.parse(String.join(",", addresses), false));
     }
 
+    /** HTML 문자열을 text/html part로 만드는 변환. */
     private static MimeBodyPart htmlBodyPart(String html) throws MessagingException {
         MimeBodyPart htmlPart = new MimeBodyPart();
         htmlPart.setContent(html, "text/html; charset=UTF-8");
@@ -136,6 +142,7 @@ public final class MailMimeFactory {
         return htmlPart;
     }
 
+    /** HTML과 인라인 이미지를 multipart/related로 묶는 조립. */
     private static MimeMultipart relatedMultipart(MimeBodyPart htmlPart, List<InlineImage> images)
             throws MessagingException {
         MimeMultipart related = new MimeMultipart("related");
@@ -151,6 +158,7 @@ public final class MailMimeFactory {
         return related;
     }
 
+    /** 일반 첨부를 mixed에 attachment로 붙이는 추가. */
     private static void addAttachments(MimeMultipart mixed, List<DecodedAttachment> files)
             throws MessagingException {
         for (DecodedAttachment attachment : files) {
@@ -160,7 +168,7 @@ public final class MailMimeFactory {
 
     /**
      * 파일명은 raw로 넘긴다. Jakarta Mail이 RFC 2231로 인코딩하므로
-     * 미리 encoded-word로 바꾸면 파라미터 분할과 겹쳐 이름이 깨진다.
+     * 미리 encoded-word로 바꾸면 파라미터 분할과 겹쳐 이름이 깨지는 문제 회피.
      */
     private static MimeBodyPart toAttachmentPart(DecodedAttachment attachment) throws MessagingException {
         MimeBodyPart part = new MimeBodyPart();
@@ -172,6 +180,7 @@ public final class MailMimeFactory {
         return part;
     }
 
+    /** data URL 이미지를 cid 인라인으로 바꾸는 치환. */
     private static InlineHtml rewriteDataUrls(String html) {
         Matcher matcher = DATA_IMG.matcher(html);
         StringBuilder rewritten = new StringBuilder();
@@ -185,7 +194,7 @@ public final class MailMimeFactory {
             totalBytes += bytes.length;
             String cid = "inline-img-" + index++ + "@note";
             parts.add(new InlineImage(cid, mime, bytes));
-            // <img src="data:..."> 를 cid 참조로 바꾼다.
+            // <img src="data:..."> 를 cid 참조로 바꾸는 치환.
             matcher.appendReplacement(rewritten, Matcher.quoteReplacement("src=\"cid:" + cid + "\""));
         }
 
@@ -194,6 +203,7 @@ public final class MailMimeFactory {
         return new InlineHtml(rewritten.toString(), parts, totalBytes);
     }
 
+    /** 첨부 contentBase64를 바이트로 푸는 변환. */
     private static List<DecodedAttachment> decodeAttachments(List<MailAttachmentRequest> files) {
         List<DecodedAttachment> decoded = new ArrayList<>(files.size());
         for (MailAttachmentRequest attachment : files) {
@@ -206,6 +216,7 @@ public final class MailMimeFactory {
         return decoded;
     }
 
+    /** data URL이면 콤마 뒤를, 아니면 문자열 전체를 Base64 디코딩. */
     private static byte[] decodeBase64(String value) {
         if (!StringUtils.hasText(value)) {
             throw new ApiException(ErrorCode.MAIL_ATTACHMENT_EMPTY);
@@ -219,8 +230,8 @@ public final class MailMimeFactory {
     }
 
     /**
-     * 경로 분리자·헤더 위험 문자를 걷어내고, macOS NFD 한글은 NFC로 합친다.
-     * 외부 클라이언트가 자모 분해 형태로 받지 않도록 발송 시점에 정규화한다.
+     * 경로 분리자·헤더 위험 문자를 걷어내고, macOS NFD 한글은 NFC로 합치는 정리.
+     * 외부 클라이언트가 자모 분해 형태로 받지 않도록 발송 시점에 정규화.
      */
     private static String safeFilename(String filename) {
         if (!StringUtils.hasText(filename)) {
@@ -239,6 +250,7 @@ public final class MailMimeFactory {
         return name;
     }
 
+    /** 비어 있으면 octet-stream, 있으면 그대로 쓰는 Content-Type. */
     private static String safeContentType(String contentType) {
         if (!StringUtils.hasText(contentType) || contentType.indexOf('\r') >= 0 || contentType.indexOf('\n') >= 0) {
             return "application/octet-stream";

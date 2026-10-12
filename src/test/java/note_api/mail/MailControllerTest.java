@@ -163,7 +163,7 @@ class MailControllerTest {
         .andExpect(jsonPath("$.attachments[0].filename").value("report.pdf"));
   }
 
-  /** 첨부 다운로드 — 파일명은 RFC 5987로 인코딩해 Content-Disposition에 실린다 */
+    /** 첨부 다운로드. 파일명은 RFC 5987로 인코딩해 Content-Disposition에 실리는 응답. */
   @Test
   void getAttachment_returnsBytesWithFilename() throws Exception {
     when(mailService.getAttachment(PRINCIPAL, "sent", "msg-1", "1"))

@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 보낸 메일을 그대로 다시 읽는 왕복 테스트.
- * {@link MailMimeFactory}가 만든 MIME을 {@link ImapMimeReader}가 원래 내용으로 복원해야 한다.
+ * {@link MailMimeFactory}가 만든 MIME을 {@link ImapMimeReader}가 원래 내용으로 복원해야 하는 조건.
  */
 class ImapMimeReaderTest {
 
@@ -72,7 +72,7 @@ class ImapMimeReaderTest {
                 });
     }
 
-    /** text 첨부가 본문 자리를 뺏으면 안 된다. */
+    /** text 첨부가 본문 자리를 뺏으면 안 되는 조건. */
     @Test
     void read_doesNotUseTextAttachmentAsBody() throws Exception {
         String payload = Base64.getEncoder().encodeToString("파일 내용".getBytes(StandardCharsets.UTF_8));
@@ -108,8 +108,8 @@ class ImapMimeReaderTest {
     }
 
     /**
-     * Outlook 등이 쓰는 encoded-word 파일명은 {@code getFileName()}이 풀어주지 않는다.
-     * macOS가 만든 NFD 한글도 NFC로 합쳐야 한다.
+     * Outlook 등이 쓰는 encoded-word 파일명은 {@code getFileName()}이 풀어주지 않는 경우.
+     * macOS가 만든 NFD 한글도 NFC로 합쳐야 하는 조건.
      */
     @Test
     void read_decodesEncodedWordFilenameAndNormalizesNfd() throws Exception {
@@ -148,7 +148,7 @@ class ImapMimeReaderTest {
         return new MimeMessage(Session.getInstance(new Properties()), new ByteArrayInputStream(mime));
     }
 
-    /** 발송용 MIME을 직렬화한 뒤 수신 측처럼 다시 파싱한다. */
+    /** 발송용 MIME을 직렬화한 뒤 수신 측처럼 다시 파싱. */
     private static MimeMessage roundTrip(SendMailRequest request) throws Exception {
         Session session = Session.getInstance(new Properties());
         ByteArrayOutputStream out = new ByteArrayOutputStream();

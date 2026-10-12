@@ -19,7 +19,7 @@ import java.util.List;
  * Gmail API 기반 {@link note_api.mail.MailProvider}.
  * <p>
  * 기존 {@link note_api.mail.MailService}가 직접 하던 Gmail 경로를 분리한 구현체.
- * {@code app.mail.provider=gmail} ({@code MAIL_PROVIDER=gmail})일 때 {@link note_api.mail.MailService}가 이 빈을 사용한다.
+ * {@code app.mail.provider=gmail} ({@code MAIL_PROVIDER=gmail})일 때 {@link note_api.mail.MailService}가 쓰는 빈.
  * <p>
  * 공통 흐름: JWT {@code sub}(= userId) → Auth에서 Google access token → {@link GmailClient}.
  * Google 미연동(404)이면 {@link note_api.common.exception.ApiException}({@code MAIL_GOOGLE_NOT_LINKED}) → 프론트 FORBIDDEN.
@@ -33,7 +33,7 @@ public class GmailMailProvider implements MailProvider {
     private final GmailClient gmailClient;
 
     /**
-     * 폴더별 스레드/메시지 목록을 조회한다.
+     * 폴더별 스레드/메시지 목록 조회.
      *
      * @param userId    JWT subject (Auth에 저장된 Google principal 키)
      * @param folder    SPA 폴더 id — {@code inbox}/{@code sent}/{@code draft}
@@ -42,15 +42,16 @@ public class GmailMailProvider implements MailProvider {
      */
     @Override
     public MailMessageListDto listMessages(String userId, String folder, String pageToken) {
+        // Google access token 후 폴더 목록.
         return gmailClient.listMessages(
                 googleToken(userId), folder, GmailApiConstants.DEFAULT_LIST_MAX_RESULTS, pageToken);
     }
 
     /**
-     * 메시지 상세를 조회한다. unread면 상세 열람 시 스레드를 읽음 처리한다.
+     * 메시지 상세 조회. unread면 상세 열람 시 스레드를 읽음 처리.
      * <p>
      * mark-as-read 실패해도 본문은 반환한다 (원본 {@code unread=true} 유지).
-     * 성공 시 응답 DTO의 {@code unread}만 {@code false}로 바꿔 내려 UX에 즉시 반영한다.
+     * 성공 시 응답 DTO의 {@code unread}만 {@code false}로 바꿔 내리는 즉시 반영.
      *
      * @param userId    JWT subject
      * @param messageId Gmail message id
@@ -59,6 +60,7 @@ public class GmailMailProvider implements MailProvider {
     @Override
     public MailMessageDetailDto getMessage(String userId, String folder, String messageId) {
         String token = googleToken(userId);
+        // 본문 조회.
         MailMessageDetailDto detail = gmailClient.getMessage(token, messageId);
 
         if (!detail.unread()) {
@@ -66,6 +68,7 @@ public class GmailMailProvider implements MailProvider {
         }
 
         try {
+            // 안 읽음이면 스레드 UNREAD 제거. 실패해도 본문은 반환.
             gmailClient.markThreadAsRead(token, detail.threadId());
 
         } catch (RuntimeException ex) {
@@ -78,7 +81,7 @@ public class GmailMailProvider implements MailProvider {
     }
 
     /**
-     * 첨부파일을 받는다. Gmail message id는 폴더와 무관해 {@code folder}는 쓰지 않는다.
+     * 첨부파일 수신. Gmail message id는 폴더와 무관해 {@code folder}는 쓰지 않음.
      *
      * @param attachmentId Gmail attachmentId
      */
@@ -97,10 +100,12 @@ public class GmailMailProvider implements MailProvider {
     @Override
     public void sendMessage(String userId, SendMailRequest request) {
         String token = googleToken(userId);
+        // MIME raw 발송.
         gmailClient.sendMessage(token, request);
 
         if (request.draftId() != null) {
             try {
+                // 초안에서 보냈으면 그 draft 삭제. 실패해도 발송은 유지.
                 gmailClient.deleteDraftByMessageId(token, request.draftId());
 
             } catch (RuntimeException ex) {
@@ -109,12 +114,13 @@ public class GmailMailProvider implements MailProvider {
         }
     }
 
+    /** Gmail draft 생성 또는 기존 draft 갱신. */
     @Override
     public String saveDraft(String userId, SaveDraftRequest request) {
         return gmailClient.saveDraft(googleToken(userId), request);
     }
 
-    /** 휴지통이면 완전 삭제, 그 외 폴더는 trash 라벨로 옮긴다. */
+    /** 휴지통이면 완전 삭제, 그 외 폴더는 trash 라벨로 옮기는 삭제. */
     @Override
     public void deleteMessages(String userId, String folder, List<String> ids) {
         if (ids == null || ids.isEmpty()) {
@@ -122,6 +128,7 @@ public class GmailMailProvider implements MailProvider {
         }
 
         String token = googleToken(userId);
+        // 휴지통 폴더면 완전 삭제, 아니면 trash 라벨.
         boolean permanent = GmailApiConstants.FOLDER_TRASH.equalsIgnoreCase(folder == null ? "" : folder.trim());
 
         for (String id : ids) {
@@ -133,7 +140,7 @@ public class GmailMailProvider implements MailProvider {
         }
     }
 
-    /** 휴지통 라벨을 벗긴다. 갈 곳이 없으면 받은편지함으로 되돌린다. */
+    /** 휴지통 라벨을 벗기는 복원. 갈 곳이 없으면 받은편지함. */
     @Override
     public void restoreMessages(String userId, List<String> ids) {
         if (ids == null || ids.isEmpty()) {
@@ -148,7 +155,7 @@ public class GmailMailProvider implements MailProvider {
     }
 
     /**
-     * 네비/뱃지용 폴더 통계를 조회한다.
+     * 네비/뱃지용 폴더 통계 조회.
      * inbox unread thread 수, sent/draft label threadsTotal 등.
      *
      * @param userId JWT subject
