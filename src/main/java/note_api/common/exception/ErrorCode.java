@@ -12,7 +12,9 @@ public enum ErrorCode {
     MAIL_ATTACHMENT_ENCODING(HttpStatus.BAD_REQUEST, "첨부파일 인코딩이 올바르지 않습니다."),
     MAIL_ATTACHMENT_FILENAME(HttpStatus.BAD_REQUEST, "첨부파일 이름이 없습니다."),
     MAIL_MESSAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "Message not found: %s"),
-    MAIL_ATTACHMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "Attachment not found: %s");
+    MAIL_ATTACHMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "Attachment not found: %s"),
+    AI_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "AI API 키가 없습니다. AI_API_KEY를 설정해 주세요."),
+    AI_UPSTREAM(HttpStatus.BAD_GATEWAY, "AI 응답을 받지 못했습니다.");
 
     private final HttpStatus status;
     private final String defaultMessage;

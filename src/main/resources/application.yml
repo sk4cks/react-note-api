@@ -15,6 +15,13 @@ oauth2:
     client-secret: react-note-secret
 
 app:
+  ai:
+    # OpenAI 호환. 키는 서버 env만. 브라우저에 두지 않음.
+    base-url: ${AI_BASE_URL:https://api.openai.com}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:gpt-4o-mini}
+    # 발송 성공 메일을 사용자별 jsonl로 남기는 디렉터리.
+    train-dir: ${AI_TRAIN_DIR:${user.home}/mail-ai-data}
   mail:
     # 로컬·k8s 모두 Mailcow IMAP. Gmail로 바꾸려면 MAIL_PROVIDER=gmail.
     provider: ${MAIL_PROVIDER:imap}

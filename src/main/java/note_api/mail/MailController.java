@@ -8,6 +8,7 @@ import note_api.mail.dto.DeleteMessagesRequest;
 import note_api.mail.dto.MailDraftResponse;
 import note_api.mail.dto.RestoreMessagesRequest;
 import note_api.mail.dto.SaveDraftRequest;
+import note_api.mail.ai.MailAiTrainLog;
 import note_api.mail.dto.SendMailRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ import java.util.List;
 public class MailController {
 
     private final MailService mailService;
+    private final MailAiTrainLog mailAiTrainLog;
 
     /** 폴더 메일 목록. */
     @GetMapping("/messages")
@@ -84,6 +86,7 @@ public class MailController {
     @PostMapping("/send")
     public void sendMail(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody SendMailRequest request) {
         mailService.sendMessage(jwt.getSubject(), request);
+        mailAiTrainLog.record(jwt.getSubject(), request);
     }
 
     /** 임시저장. 받는 사람·제목·본문이 비어도 되는 저장. */
