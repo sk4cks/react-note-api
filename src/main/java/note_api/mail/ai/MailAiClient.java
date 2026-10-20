@@ -34,7 +34,11 @@ public class MailAiClient {
             @Value("${app.ai.api-key:}") String apiKey,
             @Value("${app.ai.model:gpt-4o-mini}") String model) {
         this.objectMapper = objectMapper;
-        this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        // vLLM은 h2c Upgrade 요청의 본문을 읽지 못함. HTTP/1.1 고정.
+        this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
         this.baseUrl = trimSlash(baseUrl);
         this.apiKey = apiKey;
         this.model = model;
