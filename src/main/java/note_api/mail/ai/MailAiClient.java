@@ -61,20 +61,21 @@ public class MailAiClient {
         return post(root);
     }
 
-    /** 대화 목록과 작성 중인 메일을 같이 넣고 답장 수신. */
-    public String chat(String system, List<MailAiMessage> history, int maxTokens) {
+    /** 대화 목록으로 답변 수신. temperature는 고치기·재작성에서 낮춤. */
+    public String chat(String system, List<MailAiMessage> history, int maxTokens, double temperature) {
         if (!StringUtils.hasText(apiKey)) {
             throw new ApiException(ErrorCode.AI_NOT_CONFIGURED);
         }
 
         ObjectNode root = objectMapper.createObjectNode();
         root.put("model", model);
-        root.put("temperature", 0.5);
+        root.put("temperature", temperature);
         root.put("max_tokens", maxTokens);
         ArrayNode messages = root.putArray("messages");
         messages.addObject().put("role", "system").put("content", system);
 
         for (MailAiMessage message : history) {
+            // assistant 외의 역할은 user로 전송.
             String role = "assistant".equals(message.role()) ? "assistant" : "user";
             messages.addObject().put("role", role).put("content", message.content());
         }

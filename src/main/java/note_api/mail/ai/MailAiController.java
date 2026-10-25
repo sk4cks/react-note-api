@@ -28,13 +28,13 @@ public class MailAiController {
         return mailAiService.complete(request);
     }
 
-    /** 작성 화면 옆 채팅. */
+    /** 작성 화면 옆 채팅. 로그인 사용자의 최근 메일·주소록 참고. */
     @PostMapping("/chat")
     public MailAiChatResponse chat(
             @AuthenticationPrincipal Jwt jwt, @RequestBody MailAiChatRequest request) {
         requireLogin(jwt);
 
-        return mailAiService.chat(request);
+        return mailAiService.chat(jwt.getSubject(), request);
     }
 
     /** 인증된 요청만. */
